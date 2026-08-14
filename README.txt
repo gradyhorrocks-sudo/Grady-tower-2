@@ -85,3 +85,29 @@ SIMPLIFIED AUTO SCAN v15:
 - Lookup is now a simple Cell ID/NCI box.
 - Quick Lookup automatically tests LTE /256 and current 5G /4096 registry matches.
 - Existing Registry, Add/Edit, Backup, PIN lock, GitHub Pages and PWA support preserved.
+
+FIXED PIN v16:
+- App PIN is fixed to 159357.
+- Each new browser/app session requires the PIN.
+- Removed PIN creation/change workflow.
+- Existing registry, Scan, quick Cell ID/NCI Lookup, Registry, Add/Edit, Backup,
+  GitHub Pages, Safari Home Screen/PWA support remain preserved.
+- Important: this is app-level protection, not server-side protection of public GitHub Pages files.
+
+UNIVERSAL SEARCH + CARRIERS v17:
+- Lookup searches Cell ID/NCI, LTE eNB, 5G gNB, carrier name, tower/site name, PLMN, and band.
+- Searching by carrier returns all towers for that carrier.
+- Optional LTE/5G and carrier filters.
+- Numeric searches also perform LTE /256 and current 5G /4096 identifier math.
+- Add/Edit now accepts any future carrier name instead of a fixed carrier dropdown.
+- Entering a new carrier + PLMN adds that carrier mapping to the local registry.
+- Existing Scan, Registry, Add/Edit, Backup, fixed PIN, GitHub Pages and PWA support preserved.
+
+TOWER MAP v18:
+- Added a Map tab using OpenStreetMap.
+- Tower records can store latitude and longitude.
+- Add/Edit supports manual coordinates, current-device location, or tapping the map.
+- Saved tower locations appear as map pins with carrier/radio/ID details.
+- Existing towers without coordinates remain valid and can be mapped later.
+- Existing Scan, universal Lookup, future-carrier support, Registry, Add/Edit, Backup,
+  fixed PIN 159357, GitHub Pages, and Safari Home Screen/PWA support preserved.

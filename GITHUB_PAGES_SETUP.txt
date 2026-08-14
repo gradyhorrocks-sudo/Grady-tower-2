@@ -25,10 +25,9 @@ GITHUB PAGES:
 9. Safari Share > Add to Home Screen > Add.
 
 PIN:
-On first launch, the app asks you to create a local PIN.
-The PIN hash is stored in that browser/device's local storage.
-This is a local app lock only. GitHub Pages is public static hosting and does not
-provide server-side password protection for these files.
+The app PIN is fixed to 159357.
+Each new browser/app session requires the PIN.
+This is an app-level lock only. GitHub Pages remains public static hosting.
 
 BACKUPS:
 Use the Backup tab to export your edited registry before clearing browser data
