@@ -159,7 +159,7 @@ button.good{background:#166534}
 
 <section id="tab-registry" class="hidden">
 <div class="card">
-<h3>Registry</h3>
+<h3>Registry</h3><div class="small muted" style="margin-bottom:8px">🌐 = saved map location</div>
 <input id="q" placeholder="Search site, carrier, eNB/gNB, band..." oninput="renderRegistry()">
 <div id="counts" class="counts" style="margin-top:12px"></div>
 <div id="records"></div>
@@ -170,7 +170,7 @@ button.good{background:#166534}
 <section id="tab-map" class="hidden">
 <div class="card">
 <h3>Tower Map</h3>
-<p class="muted small">Saved tower coordinates appear as pins. Tap a pin to view the tower. To add a location, edit a tower and either enter coordinates or use the map picker.</p>
+<p class="muted small">Saved tower coordinates appear as pins. Use the map control to switch between Street Map and Satellite imagery. Tap a pin to view the tower, or edit a tower to add coordinates.</p>
 <div class="row">
 <button class="secondary" onclick="fitTowerMap()">Show All Saved Towers</button>
 <button class="secondary" onclick="centerMapOnDevice()">My Current Location</button>
@@ -494,13 +494,38 @@ function validCoord(v,min,max){
  return Number.isFinite(n)&&n>=min&&n<=max;
 }
 
+let streetLayer=null;
+let satelliteLayer=null;
+
 function ensureTowerMap(){
  if(towerMap || !window.L)return;
+
  towerMap=L.map('towerMap').setView([40.3,-109.5],8);
- L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+
+ streetLayer=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
    maxZoom:19,
    attribution:'&copy; OpenStreetMap contributors'
- }).addTo(towerMap);
+ });
+
+ // Esri World Imagery satellite/aerial basemap.
+ satelliteLayer=L.tileLayer(
+   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+   {
+     maxZoom:19,
+     attribution:'Tiles &copy; Esri'
+   }
+ );
+
+ streetLayer.addTo(towerMap);
+
+ L.control.layers(
+   {
+     'Street Map':streetLayer,
+     'Satellite':satelliteLayer
+   },
+   null,
+   {collapsed:false}
+ ).addTo(towerMap);
 
  towerMap.on('click',e=>{
    if(!locationPickMode)return;
@@ -513,7 +538,6 @@ function ensureTowerMap(){
  });
  renderTowerMap();
 }
-
 function renderTowerMap(){
  if(!towerMap||!DB)return;
  towerMarkers.forEach(m=>m.remove());
@@ -669,7 +693,7 @@ function renderRegistry(){
  document.getElementById('counts').innerHTML=`<div class="countbox"><b>${lte}</b>LTE IDs</div><div class="countbox"><b>${nr}</b>5G IDs</div><div class="countbox"><b>${lte+nr}</b>Terrestrial</div><div class="countbox"><b>${sat}</b>Starlink</div>`;
  document.getElementById('records').innerHTML=rows.map(r=>`<div class="record">
  <b>${esc(r.site)}</b><br><span class="badge">${esc(r.carrier)}</span><span class="badge">${esc(r.radio)}</span><span class="badge">${esc(r.status)}</span>
- <div class="small">${r.eNB?`eNB ${esc(r.eNB)}`:`gNB ${esc(r.gNB)}`} · ${esc(r.bands||'bands unknown')} ${r.bandwidth?'· '+esc(r.bandwidth):''}${r.latitude&&r.longitude?' · 📍 '+esc(r.latitude)+', '+esc(r.longitude):''}</div>
+ <div class="small">${r.eNB?`eNB ${esc(r.eNB)}`:`gNB ${esc(r.gNB)}`} · ${esc(r.bands||'bands unknown')} ${r.bandwidth?'· '+esc(r.bandwidth):''}${r.latitude&&r.longitude?' · <span title="Location saved: '+esc(r.latitude)+', '+esc(r.longitude)+'" aria-label="Location saved">🌐</span>':''}</div>
  <div class="record-actions"><button class="secondary" onclick='editRecord(${JSON.stringify(keyOf(r))})'>Edit</button><button class="danger" onclick='deleteRecord(${JSON.stringify(keyOf(r))})'>Delete</button></div>
  </div>`).join('') || '<div class="muted" style="padding:12px">No matching towers.</div>';
 }

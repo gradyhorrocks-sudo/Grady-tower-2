@@ -129,3 +129,17 @@ UNKNOWN TOWER ADD FLOW v20:
 - Unknown numeric Lookup results also offer Add as LTE Tower / Add as 5G Tower.
 - Existing Scan, universal Lookup, Registry, Map, ID autofill, future-carrier support,
   Backup, fixed PIN 159357, GitHub Pages and Safari Home Screen/PWA support preserved.
+
+SATELLITE MAP v21:
+- Map tab now has Street Map and Satellite basemap options.
+- Satellite layer uses Esri World Imagery.
+- Saved tower pins, map picking, current location, and coordinate editing remain available.
+- Existing Scan, universal Lookup, Registry, Add/Edit, unknown-tower add flow, future-carrier support,
+  Backup, fixed PIN 159357, GitHub Pages and Safari Home Screen/PWA support preserved.
+
+LOCATION GLOBE v22:
+- Registry records with saved latitude/longitude now display a globe symbol (🌐).
+- Records without coordinates do not show the globe.
+- Globe indicates that the tower has a saved map location.
+- Existing satellite/street map, Scan, Lookup, Add/Edit, ID autofill, unknown-tower flow,
+  Backup, PIN 159357, GitHub Pages and PWA support preserved.
