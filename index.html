@@ -1,0 +1,1086 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Tower Registry">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<title>Master Cellular Tower Registry</title>
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0b1020;color:#eef2ff;margin:0}
+.wrap{max-width:1100px;margin:auto;padding:16px 16px 90px}
+.card{background:#151b2d;border:1px solid #27304b;border-radius:16px;padding:16px;margin:12px 0}
+h1{font-size:25px;margin:4px 0 6px} h2,h3{margin-top:0}
+.muted{color:#9ca3af}.small{font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+input,select,textarea,button{width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #39435f;background:#0f1526;color:#fff;font:inherit}
+textarea{min-height:80px;resize:vertical}
+button{background:#2563eb;border:none;font-weight:700;cursor:pointer}
+button.secondary{background:#334155}
+button.danger{background:#991b1b}
+button.good{background:#166534}
+.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1;min-width:145px}
+.result{border-left:5px solid #64748b}.unknown{border-left-color:#ef4444}.prov{border-left-color:#f59e0b}.ok{border-left-color:#22c55e}
+.kv{display:grid;grid-template-columns:150px 1fr;gap:5px 10px;margin-top:8px}
+.label{color:#a5b4fc}.badge{display:inline-block;padding:3px 8px;border-radius:999px;background:#26314c;margin:3px 4px 3px 0;font-size:12px}
+.tabs{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;position:sticky;top:0;z-index:9;background:#0b1020;padding:8px 0}
+.tab{background:#1f2937}.tab.active{background:#2563eb}
+.hidden{display:none}
+.notice{padding:10px;border-radius:10px;background:#3b2f12;border:1px solid #7c5f16}
+.goodnote{padding:10px;border-radius:10px;background:#12351f;border:1px solid #1f6b3a}
+.record{padding:12px;border-bottom:1px solid #27304b}
+.record:last-child{border-bottom:none}
+.record-actions{display:flex;gap:8px;margin-top:8px}.record-actions button{padding:8px}
+.counts{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}
+.countbox{padding:12px;border-radius:12px;background:#0f1526;text-align:center}.countbox b{font-size:22px;display:block}
+#toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#111827;border:1px solid #475569;border-radius:999px;padding:10px 16px;display:none;z-index:99}
+
+#appLock{position:fixed;inset:0;background:#0b1020;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px}
+#lockCard{width:min(420px,100%);background:#151b2d;border:1px solid #27304b;border-radius:18px;padding:20px}
+#lockCard h2{margin:0 0 8px}
+#lockMsg{min-height:22px;margin-top:8px}
+
+</style>
+</head>
+<body>
+
+<div id="appLock">
+  <div id="lockCard">
+    <h2>Master Tower Registry</h2>
+    <p class="muted small" id="lockExplain">Create a PIN for this device. You will use it whenever you open the app.</p>
+    <input id="lockPin" type="password" inputmode="numeric" autocomplete="off" placeholder="Enter PIN">
+    <input id="lockPin2" type="password" inputmode="numeric" autocomplete="off" placeholder="Confirm PIN" style="margin-top:8px">
+    <button id="lockBtn" style="margin-top:10px">Set PIN</button>
+    <button id="lockResetBtn" class="danger hidden" style="margin-top:8px">Forget Local PIN</button>
+    <div id="lockMsg" class="small muted"></div>
+  </div>
+</div>
+
+<div class="wrap">
+<h1>Master Cellular Tower Registry</h1>
+<div class="muted">Editable offline tower registry with LTE/5G identifier math.</div>
+
+<div class="tabs">
+<button class="tab active" onclick="showTab('lookup',this)">Lookup</button>
+<button class="tab" onclick="showTab('scan',this)">Scan</button>
+<button class="tab" onclick="showTab('registry',this)">Registry</button>
+<button class="tab" onclick="showTab('add',this)">Add/Edit</button>
+<button class="tab" onclick="showTab('backup',this)">Backup</button>
+</div>
+
+<section id="tab-lookup">
+<div class="card">
+<h3>Identify Connection</h3>
+<div class="grid">
+<div><label>Home carrier</label><select id="home"><option>T-Mobile</option><option>AT&T</option><option>Verizon</option><option>STRATA Networks</option><option>Union Wireless</option></select></div>
+<div><label>PLMN</label><input id="plmn" placeholder="312290"></div>
+<div><label>Radio</label><select id="radio"><option>LTE</option><option>5G</option></select></div>
+<div><label>Cell ID / NCI</label><input id="cellid" inputmode="numeric" placeholder="276228"></div>
+<div><label>eNB / gNB (optional)</label><input id="siteid" inputmode="numeric"></div>
+<div><label>5G split</label><select id="bits"><option value="12">12-bit /4096</option></select></div>
+<div><label>Band</label><input id="lookupBand" placeholder="B5 / n41"></div>
+<div><label>Bandwidth</label><input id="lookupBw" placeholder="100 MHz"></div>
+<div><label>PCI</label><input id="lookupPci" inputmode="numeric"></div>
+<div><label>TAC</label><input id="lookupTac" inputmode="numeric"></div>
+<div><label>RSRP</label><input id="rsrp" inputmode="numeric" placeholder="-95"></div>
+<div><label>RSRQ</label><input id="rsrq" inputmode="decimal" placeholder="-10"></div>
+<div><label>SNR / SINR</label><input id="snr" inputmode="decimal" placeholder="18"></div>
+</div>
+<div style="margin-top:12px"><button onclick="lookup()">Identify Tower</button></div>
+</div>
+<div id="out"></div>
+</section>
+
+
+<section id="tab-scan" class="hidden">
+<div class="card">
+<h3>Screenshot Scanner</h3>
+<p class="muted small">Choose a screenshot from a cellular diagnostic app. Optimized for your diagnostic screen: each label and value are paired when they fall inside the same horizontal row between the same separator lines. The scanner then reads the value to the right of that label.</p>
+
+<div class="grid">
+<div>
+<label>Screenshot</label>
+<input id="scanImage" type="file" accept="image/*">
+</div>
+<div>
+<label>Home carrier</label>
+<select id="scanHome">
+<option>T-Mobile</option><option>AT&T</option><option>Verizon</option><option>STRATA Networks</option><option>Union Wireless</option>
+</select>
+</div>
+<div>
+<label>Radio type</label>
+<select id="scanRadio">
+<option value="auto">Auto detect</option>
+<option value="LTE">LTE</option>
+<option value="5G">5G</option>
+</select>
+</div>
+</div>
+
+<div id="scanPreviewWrap" class="hidden" style="margin-top:12px">
+<img id="scanPreview" alt="Selected cellular screenshot" style="max-width:100%;border-radius:12px;border:1px solid #39435f">
+</div>
+
+<div class="row" style="margin-top:12px">
+<button id="runOcrBtn" type="button">Scan & Identify</button>
+<button id="copyToLookupBtn" type="button" class="good" disabled>Open in Lookup</button>
+</div>
+
+<div id="ocrStatus" class="small muted" style="margin-top:10px" aria-live="polite"></div>
+
+<div id="scanIdentity" style="margin-top:12px"></div>
+<div id="scanResults" class="hidden" style="margin-top:12px">
+<div class="notice"><b>Review before using.</b> OCR can misread 0/O, 1/I and minus signs. The scanner now reads the number/value inside the same horizontal line band as each label. TAC, PCI, PLMN and Cell ID/NCI stay in their own rows.</div>
+<div class="grid" style="margin-top:12px">
+<div><label>PLMN</label><input id="sPlmn"></div>
+<div><label>Radio</label><select id="sRadio"><option>LTE</option><option>5G</option></select></div>
+<div><label>Cell ID / NCI</label><input id="sCell"></div>
+<div><label>eNB / gNB</label><input id="sId"></div>
+<div><label>Sector / local cell</label><input id="sLocal"></div>
+<div><label>Band</label><input id="sBand"></div>
+<div><label>Bandwidth</label><input id="sBw"></div>
+<div><label>PCI</label><input id="sPci"></div>
+<div><label>TAC</label><input id="sTac"></div>
+<div><label>RSRP</label><input id="sRsrp"></div>
+<div><label>RSRQ</label><input id="sRsrq"></div>
+<div><label>SNR / SINR</label><input id="sSnr"></div>
+</div>
+<div style="margin-top:12px">
+<label>OCR text</label>
+<textarea id="ocrText" style="min-height:160px"></textarea>
+</div>
+</div>
+</div>
+</section>
+
+<section id="tab-registry" class="hidden">
+<div class="card">
+<h3>Registry</h3>
+<input id="q" placeholder="Search site, carrier, eNB/gNB, band..." oninput="renderRegistry()">
+<div id="counts" class="counts" style="margin-top:12px"></div>
+<div id="records"></div>
+</div>
+</section>
+
+<section id="tab-add" class="hidden">
+<div class="card">
+<h3 id="formTitle">Add Tower</h3>
+<input type="hidden" id="editKey">
+<div class="grid">
+<div><label>Carrier</label><select id="fCarrier" onchange="syncPlmn()">
+<option>T-Mobile</option><option>STRATA Networks</option><option>AT&T</option><option>Verizon</option><option>Union Wireless</option><option>T-Mobile Starlink</option>
+</select></div>
+<div><label>PLMN</label><input id="fPlmn"></div>
+<div><label>Radio</label><select id="fRadio" onchange="updateIdLabel()"><option>LTE</option><option>5G</option></select></div>
+<div><label id="idLabel">eNB</label><input id="fId" inputmode="numeric"></div>
+<div><label>Site name</label><input id="fSite" placeholder="Tower/site name"></div>
+<div><label>Status</label><select id="fStatus"><option value="confirmed">Confirmed</option><option value="provisional">Provisional ?</option><option value="unknown">Unmapped / Unknown ?</option></select></div>
+<div><label>Bands</label><input id="fBands" placeholder="B2 B12 B66 / n41"></div>
+<div><label>Bandwidth</label><input id="fBandwidth" placeholder="100 MHz"></div>
+<div><label>Cell ID / NCI</label><input id="fCell" inputmode="numeric" oninput="calcFormIds()"></div>
+<div><label>Sector / local cell</label><input id="fLocal" inputmode="numeric" oninput="calcFormReverse()"></div>
+<div><label>PCI</label><input id="fPci" inputmode="numeric"></div>
+<div><label>TAC</label><input id="fTac" inputmode="numeric"></div>
+</div>
+<div style="margin-top:10px"><label>Notes</label><textarea id="fNotes"></textarea></div>
+<div id="formMath" class="small muted" style="margin:10px 0"></div>
+<div class="row">
+<button class="good" onclick="saveRecord()">Save Tower</button>
+<button class="secondary" onclick="clearForm()">Clear</button>
+</div>
+<div id="duplicateWarn" style="margin-top:10px"></div>
+</div>
+</section>
+
+<section id="tab-backup" class="hidden">
+<div class="card">
+<h3>Backup & Transfer</h3>
+<p class="muted">Changes are stored locally on this device. Export a backup before clearing browser data or moving to another device.</p>
+<div class="row">
+<button onclick="exportRegistry()">Export Registry JSON</button>
+<button class="secondary" onclick="document.getElementById('importFile').click()">Import Registry JSON</button>
+<input id="importFile" type="file" accept=".json,application/json" class="hidden" onchange="importRegistry(event)">
+</div>
+<div style="margin-top:10px"><button class="danger" onclick="resetRegistry()">Reset to Built-in Registry</button></div>
+<div style="margin-top:10px"><button class="secondary" onclick="changeLocalPin()">Change App PIN</button></div>
+</div>
+<div class="notice small" style="margin-top:12px"><b>PIN note:</b> This is an on-device app lock. GitHub Pages is static hosting, so it does not provide true server-side password protection for the hosted files.</div>
+</section>
+</div>
+<div id="toast"></div>
+
+<script>
+let BUILTIN=null, DB=null;
+const PLMNS={"T-Mobile":"310260","T-Mobile Starlink":"310830","STRATA Networks":"312290","AT&T":"310410","Verizon":"311480","Union Wireless":"310020"};
+
+function showTab(name,btn){
+ document.querySelectorAll('section[id^="tab-"]').forEach(x=>x.classList.add('hidden'));
+ document.getElementById('tab-'+name).classList.remove('hidden');
+ document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active')); btn.classList.add('active');
+ if(name==='registry') renderRegistry();
+}
+function esc(s){return String(s??'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]))}
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.style.display='block';setTimeout(()=>t.style.display='none',2200)}
+function keyOf(r){return `${r.carrier}|${r.radio}|${r.eNB||r.gNB||''}`}
+function saveLocal(){localStorage.setItem('masterTowerRegistry',JSON.stringify(DB))}
+function loadLocal(){const x=localStorage.getItem('masterTowerRegistry'); if(x){try{return JSON.parse(x)}catch(e){}} return null}
+
+
+async function sha256Hex(text){
+ const data=new TextEncoder().encode(text);
+ const hash=await crypto.subtle.digest('SHA-256',data);
+ return Array.from(new Uint8Array(hash)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+function lockMode(){
+ return localStorage.getItem('towerRegistryPinHash') ? 'unlock' : 'setup';
+}
+
+function renderLock(){
+ const mode=lockMode();
+ const explain=document.getElementById('lockExplain');
+ const pin2=document.getElementById('lockPin2');
+ const btn=document.getElementById('lockBtn');
+ const reset=document.getElementById('lockResetBtn');
+ document.getElementById('lockMsg').textContent='';
+ document.getElementById('lockPin').value='';
+ document.getElementById('lockPin2').value='';
+ if(mode==='setup'){
+   explain.textContent='Create a PIN for this device. You will use it whenever you open the app.';
+   pin2.classList.remove('hidden');
+   btn.textContent='Set PIN';
+   reset.classList.add('hidden');
+ }else{
+   explain.textContent='Enter your PIN to open the registry.';
+   pin2.classList.add('hidden');
+   btn.textContent='Unlock';
+   reset.classList.remove('hidden');
+ }
+ document.getElementById('appLock').style.display='flex';
+ setTimeout(()=>document.getElementById('lockPin').focus(),100);
+}
+
+async function handleLock(){
+ const pin=document.getElementById('lockPin').value.trim();
+ const msg=document.getElementById('lockMsg');
+ if(pin.length<4){msg.textContent='Use at least 4 digits/characters.';return;}
+ const h=await sha256Hex(pin);
+ if(lockMode()==='setup'){
+   const pin2=document.getElementById('lockPin2').value.trim();
+   if(pin!==pin2){msg.textContent='PINs do not match.';return;}
+   localStorage.setItem('towerRegistryPinHash',h);
+   sessionStorage.setItem('towerRegistryUnlocked','1');
+   document.getElementById('appLock').style.display='none';
+   toast('App PIN created.');
+ }else{
+   if(h===localStorage.getItem('towerRegistryPinHash')){
+     sessionStorage.setItem('towerRegistryUnlocked','1');
+     document.getElementById('appLock').style.display='none';
+   }else{
+     msg.textContent='Incorrect PIN.';
+   }
+ }
+}
+
+function changeLocalPin(){
+ if(!confirm('Change the PIN for this device?'))return;
+ localStorage.removeItem('towerRegistryPinHash');
+ sessionStorage.removeItem('towerRegistryUnlocked');
+ renderLock();
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+ document.getElementById('lockBtn').addEventListener('click',handleLock);
+ document.getElementById('lockPin').addEventListener('keydown',e=>{if(e.key==='Enter')handleLock();});
+ document.getElementById('lockPin2').addEventListener('keydown',e=>{if(e.key==='Enter')handleLock();});
+ document.getElementById('lockResetBtn').addEventListener('click',()=>{
+   if(confirm('Forget the local PIN on this device? This does not delete the tower registry.')){
+     localStorage.removeItem('towerRegistryPinHash');
+     sessionStorage.removeItem('towerRegistryUnlocked');
+     renderLock();
+   }
+ });
+ if(sessionStorage.getItem('towerRegistryUnlocked')==='1'){
+   document.getElementById('appLock').style.display='none';
+ }else{
+   renderLock();
+ }
+});
+
+fetch('registry.json').then(r=>r.json()).then(j=>{
+ BUILTIN=j; DB=loadLocal()||JSON.parse(JSON.stringify(j)); renderRegistry(); syncPlmn();
+}).catch(()=>{document.getElementById('out').innerHTML='<div class="card unknown">Could not load registry.json.</div>'});
+
+function signalRating(kind,v){
+ if(v===''||v===null||Number.isNaN(Number(v))) return ['Unknown','⚪'];
+ v=Number(v);
+ if(kind==='rsrp'){
+   if(v>=-80)return ['Excellent','🟢']; if(v>=-95)return ['Good','🟢']; if(v>=-105)return ['Fair','🟡']; if(v>=-115)return ['Poor','🟠']; return ['Very Poor','🔴'];
+ }
+ if(kind==='rsrq'){
+   if(v>=-10)return ['Excellent','🟢']; if(v>=-15)return ['Good','🟢']; if(v>=-20)return ['Fair','🟡']; return ['Poor','🔴'];
+ }
+ if(kind==='snr'){
+   if(v>=20)return ['Excellent','🟢']; if(v>=13)return ['Good','🟢']; if(v>=0)return ['Fair','🟡']; return ['Poor','🔴'];
+ }
+ return ['Unknown','⚪'];
+}
+function lookup(){
+ if(!DB)return;
+ const plmn=document.getElementById('plmn').value.trim(), radio=document.getElementById('radio').value, home=document.getElementById('home').value;
+ const raw=document.getElementById('cellid').value.trim(); let sid=document.getElementById('siteid').value.trim(), local='', math='', exact='?';
+ if(raw){
+  try{
+   const n=BigInt(raw);
+   if(radio==='LTE'){const e=n/256n,s=n%256n,rev=e*256n+s;local=s.toString();if(!sid)sid=e.toString();exact=(rev===n&&sid===e.toString())?'✅':'❌';math=`${raw} // 256 = ${e}, remainder ${s}. Reverse: ${e} × 256 + ${s} = ${rev} ${exact}`;}
+   else{const d=4096n,g=n/d,l=n%d,rev=g*d+l;local=l.toString();if(!sid)sid=g.toString();exact=(rev===n&&sid===g.toString())?'✅':'❌';math=`Assumed 12-bit split ?: ${raw} // 4096 = ${g}, remainder ${l}. Reverse: ${g} × 4096 + ${l} = ${rev} ${exact}`;}
+  }catch(e){math='Invalid Cell ID/NCI'}
+ }
+ const carrier=DB.plmns[plmn]||'Unknown';
+ const roaming=(carrier!=='Unknown'&&carrier!==home&&carrier!=='T-Mobile Starlink')?'Yes':'No';
+ const rec=DB.records.find(r=>r.carrier===carrier&&r.radio===radio&&String(r.eNB||r.gNB)===String(sid));
+ let cls='unknown',name='UNMAPPED / UNKNOWN ?';
+ if(rec){name=rec.site;cls=rec.status==='confirmed'?'ok':rec.status==='provisional'?'prov':'unknown'}
+ if(carrier==='STRATA Networks' && sid==='1079'){name='UNMAPPED STRATA SITE ?';cls='unknown'}
+ const rsrp=document.getElementById('rsrp').value,rsrq=document.getElementById('rsrq').value,snr=document.getElementById('snr').value;
+ const rr=signalRating('rsrp',rsrp),rq=signalRating('rsrq',rsrq),sr=signalRating('snr',snr);
+ const vals=[rsrp?rr:null,rsrq?rq:null,snr?sr:null].filter(Boolean);
+ let overall='Unknown',icon='⚪';
+ if(vals.length){const rank={'Excellent':4,'Good':3,'Fair':2,'Poor':1,'Very Poor':0};let m=Math.min(...vals.map(x=>rank[x[0]]??0));overall=Object.keys(rank).find(k=>rank[k]===m)||'Unknown';icon=m>=3?'🟢':m===2?'🟡':m===1?'🟠':'🔴'}
+ const tac=document.getElementById('lookupTac').value.trim();
+ let tacnote='';
+ if(carrier==='STRATA Networks'&&tac){tacnote=tac==='101'?'Other carriers NOT allowed to roam':tac==='102'?'Other carriers ARE allowed to roam':'No special TAC rule stored';}
+ document.getElementById('out').innerHTML=`<div class="card result ${cls}">
+ <h2>${esc(name)}</h2>
+ <div class="kv">
+ <div class="label">Carrier</div><div>${esc(carrier)}</div><div class="label">PLMN</div><div>${esc(plmn||'Unknown')}</div>
+ <div class="label">LTE/5G</div><div>${radio}</div><div class="label">Band</div><div>${esc(document.getElementById('lookupBand').value||rec?.bands||'Unknown')}</div>
+ <div class="label">Bandwidth</div><div>${esc(document.getElementById('lookupBw').value||rec?.bandwidth||'Unknown')}</div>
+ <div class="label">${radio==='LTE'?'eNB':'gNB'}</div><div>${esc(sid||'Unknown')}${radio==='5G'&&raw?' ?':''}</div>
+ <div class="label">${radio==='LTE'?'Sector/local cell':'Local cell'}</div><div>${esc(local||'Unknown')}${radio==='5G'&&raw?' ?':''}</div>
+ <div class="label">Cell ID/NCI</div><div>${esc(raw||'Unknown')}</div><div class="label">PCI</div><div>${esc(document.getElementById('lookupPci').value||'Unknown')}</div>
+ <div class="label">TAC</div><div>${esc(tac||'Unknown')} ${tacnote?'<span class="small muted">('+esc(tacnote)+')</span>':''}</div>
+ </div>
+ <div style="margin-top:12px"><b>Signal: ${icon} ${overall}</b></div>
+ <div class="small">RSRP: ${rsrp?`${rr[1]} ${esc(rsrp)} dBm · ${rr[0]}`:'Unknown'}<br>RSRQ: ${rsrq?`${rq[1]} ${esc(rsrq)} dB · ${rq[0]}`:'Unknown'}<br>SNR/SINR: ${snr?`${sr[1]} ${esc(snr)} dB · ${sr[0]}`:'Unknown'}</div>
+ <div style="margin-top:10px"><b>Math:</b> ${esc(math||'Enter Cell ID/NCI to calculate')}</div>
+ <div class="small muted" style="margin-top:8px">Home carrier: ${esc(home)} · Roaming: ${roaming}</div>
+ ${rec?.notes?'<div class="small" style="margin-top:8px">'+esc(rec.notes)+'</div>':''}
+ </div>`;
+}
+
+function renderRegistry(){
+ if(!DB)return;
+ const q=document.getElementById('q').value.toLowerCase().trim();
+ const rows=DB.records.filter(r=>!q||JSON.stringify(r).toLowerCase().includes(q));
+ const lte=DB.records.filter(r=>r.radio==='LTE'&&r.carrier!=='T-Mobile Starlink').length;
+ const nr=DB.records.filter(r=>r.radio==='5G'&&r.carrier!=='T-Mobile Starlink').length;
+ const sat=DB.records.filter(r=>r.carrier==='T-Mobile Starlink').length;
+ document.getElementById('counts').innerHTML=`<div class="countbox"><b>${lte}</b>LTE IDs</div><div class="countbox"><b>${nr}</b>5G IDs</div><div class="countbox"><b>${lte+nr}</b>Terrestrial</div><div class="countbox"><b>${sat}</b>Starlink</div>`;
+ document.getElementById('records').innerHTML=rows.map(r=>`<div class="record">
+ <b>${esc(r.site)}</b><br><span class="badge">${esc(r.carrier)}</span><span class="badge">${esc(r.radio)}</span><span class="badge">${esc(r.status)}</span>
+ <div class="small">${r.eNB?`eNB ${esc(r.eNB)}`:`gNB ${esc(r.gNB)}`} · ${esc(r.bands||'bands unknown')} ${r.bandwidth?'· '+esc(r.bandwidth):''}</div>
+ <div class="record-actions"><button class="secondary" onclick='editRecord(${JSON.stringify(keyOf(r))})'>Edit</button><button class="danger" onclick='deleteRecord(${JSON.stringify(keyOf(r))})'>Delete</button></div>
+ </div>`).join('') || '<div class="muted" style="padding:12px">No matching towers.</div>';
+}
+function syncPlmn(){document.getElementById('fPlmn').value=PLMNS[document.getElementById('fCarrier').value]||''}
+function updateIdLabel(){document.getElementById('idLabel').textContent=document.getElementById('fRadio').value==='LTE'?'eNB':'gNB';calcFormIds()}
+function calcFormIds(){
+ const radio=document.getElementById('fRadio').value,raw=document.getElementById('fCell').value.trim();
+ if(!raw){document.getElementById('formMath').textContent='';return}
+ try{
+  const n=BigInt(raw);
+  if(radio==='LTE'){const e=n/256n,s=n%256n;document.getElementById('fId').value=e;document.getElementById('fLocal').value=s;document.getElementById('formMath').textContent=`LTE: ${n} // 256 = eNB ${e}, sector ${s}. Reverse = ${e*256n+s} ✅`;}
+  else{const g=n/4096n,l=n%4096n;document.getElementById('fId').value=g;document.getElementById('fLocal').value=l;document.getElementById('formMath').textContent=`5G assumed 12-bit split ?: gNB ${g} ?, local ${l} ?. Reverse = ${g*4096n+l}`;}
+ }catch(e){}
+}
+function calcFormReverse(){
+ const radio=document.getElementById('fRadio').value,id=document.getElementById('fId').value.trim(),loc=document.getElementById('fLocal').value.trim();
+ if(!id||!loc)return;
+ try{
+  const a=BigInt(id),b=BigInt(loc),v=radio==='LTE'?a*256n+b:a*4096n+b;
+  document.getElementById('fCell').value=v;
+  document.getElementById('formMath').textContent=radio==='LTE'?`Reverse LTE: ${a} × 256 + ${b} = ${v}`:`Reverse 5G assumed /4096 ?: ${a} × 4096 + ${b} = ${v}`;
+ }catch(e){}
+}
+function clearForm(){
+ ['editKey','fId','fSite','fBands','fBandwidth','fCell','fLocal','fPci','fTac','fNotes'].forEach(id=>document.getElementById(id).value='');
+ document.getElementById('fStatus').value='confirmed';document.getElementById('fRadio').value='LTE';document.getElementById('formTitle').textContent='Add Tower';document.getElementById('duplicateWarn').innerHTML='';syncPlmn();updateIdLabel();
+}
+function saveRecord(){
+ if(!DB)return;
+ const carrier=document.getElementById('fCarrier').value,radio=document.getElementById('fRadio').value,id=document.getElementById('fId').value.trim(),site=document.getElementById('fSite').value.trim();
+ if(!id||!site){toast('Tower ID and site name are required.');return}
+ const oldKey=document.getElementById('editKey').value;
+ const newKey=`${carrier}|${radio}|${id}`;
+ const existingIndex=DB.records.findIndex(r=>keyOf(r)===newKey);
+ if(existingIndex>=0 && newKey!==oldKey){
+   document.getElementById('duplicateWarn').innerHTML='<div class="notice"><b>Duplicate blocked.</b> That carrier + radio + ID already exists. Edit the existing record instead.</div>';
+   return;
+ }
+ const rec={carrier,radio,site,bands:document.getElementById('fBands').value.trim(),bandwidth:document.getElementById('fBandwidth').value.trim(),status:document.getElementById('fStatus').value,notes:document.getElementById('fNotes').value.trim(),plmn:document.getElementById('fPlmn').value.trim(),cell_id:document.getElementById('fCell').value.trim(),local_cell:document.getElementById('fLocal').value.trim(),pci:document.getElementById('fPci').value.trim(),tac:document.getElementById('fTac').value.trim()};
+ if(radio==='LTE')rec.eNB=id;else rec.gNB=id;
+ if(oldKey){
+   const i=DB.records.findIndex(r=>keyOf(r)===oldKey); if(i>=0)DB.records[i]=rec; else DB.records.push(rec);
+ } else DB.records.push(rec);
+ if(carrier==='STRATA Networks'&&id==='1079'&&site!=='UNMAPPED STRATA SITE ?'&&rec.status==='confirmed'){
+   // User is explicitly naming 1079 in-app, so allow it.
+ }
+ saveLocal();renderRegistry();clearForm();toast('Tower saved.');
+}
+function editRecord(k){
+ const r=DB.records.find(x=>keyOf(x)===k);if(!r)return;
+ showTab('add',document.querySelectorAll('.tab')[3]);document.getElementById('formTitle').textContent='Edit Tower';document.getElementById('editKey').value=k;
+ document.getElementById('fCarrier').value=r.carrier;document.getElementById('fPlmn').value=r.plmn||PLMNS[r.carrier]||'';document.getElementById('fRadio').value=r.radio;
+ document.getElementById('fId').value=r.eNB||r.gNB||'';document.getElementById('fSite').value=r.site||'';document.getElementById('fStatus').value=r.status||'confirmed';
+ document.getElementById('fBands').value=r.bands||'';document.getElementById('fBandwidth').value=r.bandwidth||'';document.getElementById('fCell').value=r.cell_id||'';
+ document.getElementById('fLocal').value=r.local_cell||'';document.getElementById('fPci').value=r.pci||'';document.getElementById('fTac').value=r.tac||'';document.getElementById('fNotes').value=r.notes||'';
+ updateIdLabel();
+}
+function deleteRecord(k){
+ const r=DB.records.find(x=>keyOf(x)===k); if(!r)return;
+ if(!confirm(`Delete ${r.site} (${r.eNB||r.gNB})?`))return;
+ DB.records=DB.records.filter(x=>keyOf(x)!==k);saveLocal();renderRegistry();toast('Tower deleted.');
+}
+function exportRegistry(){
+ const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='Master_Cellular_Tower_Registry_Backup.json';a.click();URL.revokeObjectURL(a.href);toast('Registry exported.');
+}
+function importRegistry(ev){
+ const f=ev.target.files[0];if(!f)return;const reader=new FileReader();
+ reader.onload=()=>{try{const j=JSON.parse(reader.result);if(!j.records||!j.plmns)throw new Error();DB=j;saveLocal();renderRegistry();toast('Registry imported.');}catch(e){toast('Invalid registry file.')}};reader.readAsText(f);ev.target.value='';
+}
+function resetRegistry(){
+ if(!confirm('Reset all local changes and restore the built-in registry?'))return;
+ DB=JSON.parse(JSON.stringify(BUILTIN));saveLocal();renderRegistry();toast('Registry reset.');
+}
+
+let scanObjectUrl=null;
+const scanImage=document.getElementById('scanImage');
+const runOcrBtn=document.getElementById('runOcrBtn');
+const copyToLookupBtn=document.getElementById('copyToLookupBtn');
+
+scanImage.addEventListener('change',()=>{
+ const f=scanImage.files&&scanImage.files[0];
+ if(!f)return;
+ if(scanObjectUrl)URL.revokeObjectURL(scanObjectUrl);
+ scanObjectUrl=URL.createObjectURL(f);
+ document.getElementById('scanPreview').src=scanObjectUrl;
+ document.getElementById('scanPreviewWrap').classList.remove('hidden');
+ document.getElementById('ocrStatus').textContent='Image selected. Tap Scan Screenshot.';
+ document.getElementById('scanResults').classList.add('hidden');
+ document.getElementById('scanIdentity').innerHTML='';
+ copyToLookupBtn.disabled=true;
+});
+
+function firstMatch(text,patterns){
+ for(const p of patterns){
+   const m=text.match(p);
+   if(m&&m[1])return m[1].trim();
+ }
+ return '';
+}
+
+function normalizeNum(s){
+ return String(s||'').replace(/[Oo]/g,'0').replace(/[Il|]/g,'1').replace(/[^\d-]/g,'');
+}
+
+function extractScanFields(text){
+ const t=text.replace(/\r/g,'');
+ let radio=document.getElementById('scanRadio').value;
+ if(radio==='auto'){
+   radio=/\b(?:5G|NR|NCI|gNB|n(?:25|41|71))\b/i.test(t)?'5G':'LTE';
+ }
+
+ // Only accept PLMN when it is explicitly labeled or is one of the known PLMNs.
+ let plmn=firstMatch(t,[
+   /(?:PLMN|MCC\s*\/?\s*MNC|MCCMNC)\s*[:#=-]?\s*(\d{5,6})/i,
+   /\b(310260|310830|312290|310410|311480|310020|31220)\b/
+ ]);
+
+ // IMPORTANT: Cell ID/NCI must be tied to its own label.
+ // Never fall back to "some long number", because TAC/PCI/ARFCN can be mistaken for Cell ID.
+ let cell='';
+ if(radio==='5G'){
+   cell=firstMatch(t,[
+     /(?:^|\n)\s*(?:NCI|NR\s*Cell\s*ID|NR\s*Cell\s*Identity|Cell\s*Identity)\s*[:#=-]?\s*([0-9OoIl|]{7,15})\b/im,
+     /(?:NCI|NR\s*Cell\s*ID)\D{0,12}([0-9OoIl|]{7,15})\b/i
+   ]);
+ } else {
+   cell=firstMatch(t,[
+     /(?:^|\n)\s*(?:LTE\s*)?(?:Cell\s*ID|ECI|E-UTRAN\s*Cell\s*ID|Cell\s*Identity)\s*[:#=-]?\s*([0-9OoIl|]{5,12})\b/im,
+     /(?:Cell\s*ID|ECI)\D{0,12}([0-9OoIl|]{5,12})\b/i
+   ]);
+ }
+ cell=normalizeNum(cell);
+
+ // TAC and PCI are also label-bound, so they cannot leak into Cell ID.
+ let pci=normalizeNum(firstMatch(t,[
+   /(?:^|\n)\s*(?:PCI|Physical\s*Cell\s*ID)\s*[:#=-]?\s*([0-9OoIl|]{1,4})\b/im
+ ]));
+ let tac=normalizeNum(firstMatch(t,[
+   /(?:^|\n)\s*(?:TAC|Tracking\s*Area(?:\s*Code)?)\s*[:#=-]?\s*([0-9OoIl|]{1,8})\b/im
+ ]));
+
+ let band=firstMatch(t,[
+   /(?:LTE\s*Band|NR\s*Band|Band)\s*[:#=-]?\s*((?:n|B)?\s*\d{1,3})/i,
+   /\b(n(?:25|41|71)|B(?:2|4|5|12|13|14|17|30|66|71))\b/i
+ ]).replace(/\s+/g,'');
+ if(band && !/^[Bn]/.test(band)) band=(radio==='5G'?'n':'B')+band;
+
+ let bw=firstMatch(t,[
+   /(?:Bandwidth|BW)\s*[:#=-]?\s*(\d{1,3}\s*MHz)/i
+ ]);
+
+ let rsrp=firstMatch(t,[/(?:^|\n)\s*RSRP\s*[:#=-]?\s*(-?\s*\d{2,3}(?:\.\d+)?)/im]).replace(/\s+/g,'');
+ let rsrq=firstMatch(t,[/(?:^|\n)\s*RSRQ\s*[:#=-]?\s*(-?\s*\d{1,3}(?:\.\d+)?)/im]).replace(/\s+/g,'');
+ let snr=firstMatch(t,[/(?:^|\n)\s*(?:SNR|SINR)\s*[:#=-]?\s*(-?\s*\d{1,3}(?:\.\d+)?)/im]).replace(/\s+/g,'');
+
+ let sid='',local='';
+ if(cell){
+   try{
+     const n=BigInt(cell);
+     if(radio==='LTE'){sid=(n/256n).toString();local=(n%256n).toString();}
+     else{sid=(n/4096n).toString();local=(n%4096n).toString();}
+   }catch(e){}
+ }
+
+ return {radio,plmn,cell,sid,local,band,bw,pci,tac,rsrp,rsrq,snr};
+}
+
+function identifyFromScan(fields){
+ if(!DB)return;
+ const plmn=fields.plmn||'';
+ const radio=fields.radio||'LTE';
+ const raw=fields.cell||'';
+ const sid=fields.sid||'';
+ const local=fields.local||'';
+ const carrier=DB.plmns[plmn]||'Unknown';
+ const home=document.getElementById('scanHome').value;
+ const roaming=(carrier!=='Unknown'&&carrier!==home&&carrier!=='T-Mobile Starlink')?'Yes':'No';
+
+ const rec=DB.records.find(r=>r.carrier===carrier&&r.radio===radio&&String(r.eNB||r.gNB)===String(sid));
+
+ let cls='unknown',name='UNMAPPED / UNKNOWN ?';
+ if(rec){
+   name=rec.site;
+   cls=rec.status==='confirmed'?'ok':rec.status==='provisional'?'prov':'unknown';
+ }
+ if(carrier==='STRATA Networks'&&String(sid)==='1079'){
+   name='UNMAPPED STRATA SITE ?';
+   cls='unknown';
+ }
+
+ let math='No Cell ID/NCI extracted.';
+ if(raw){
+   try{
+     const n=BigInt(raw);
+     if(radio==='LTE'){
+       const e=n/256n,s=n%256n,rev=e*256n+s;
+       math=`${raw} // 256 = ${e}, remainder ${s}. Reverse: ${e} × 256 + ${s} = ${rev} ${(String(e)===String(sid)&&rev===n)?'✅':'❌'}`;
+     }else{
+       const g=n/4096n,l=n%4096n,rev=g*4096n+l;
+       math=`Assumed 12-bit split ?: ${raw} // 4096 = ${g}, remainder ${l}. Reverse: ${g} × 4096 + ${l} = ${rev} ${(String(g)===String(sid)&&rev===n)?'✅':'❌'}`;
+     }
+   }catch(e){}
+ }
+
+ const rr=signalRating('rsrp',fields.rsrp);
+ const rq=signalRating('rsrq',fields.rsrq);
+ const sr=signalRating('snr',fields.snr);
+ const vals=[];
+ if(fields.rsrp)vals.push(rr);
+ if(fields.rsrq)vals.push(rq);
+ if(fields.snr)vals.push(sr);
+
+ let overall='Unknown',icon='⚪';
+ if(vals.length){
+   const rank={'Excellent':4,'Good':3,'Fair':2,'Poor':1,'Very Poor':0};
+   const m=Math.min(...vals.map(x=>rank[x[0]]??0));
+   overall=Object.keys(rank).find(k=>rank[k]===m)||'Unknown';
+   icon=m>=3?'🟢':m===2?'🟡':m===1?'🟠':'🔴';
+ }
+
+ let tacnote='';
+ if(carrier==='STRATA Networks'&&fields.tac){
+   tacnote=fields.tac==='101'?'Other carriers NOT allowed to roam':
+           fields.tac==='102'?'Other carriers ARE allowed to roam':'No special TAC rule stored';
+ }
+
+ const warnMissing = (!plmn || !raw)
+   ? '<div class="notice" style="margin-bottom:10px"><b>Incomplete scan:</b> The app could not confidently read '+(!plmn?'PLMN':'')+(!plmn&&!raw?' and ':'')+(!raw?'Cell ID/NCI':'')+'. Review the OCR fields below.</div>'
+   : '';
+
+ document.getElementById('scanIdentity').innerHTML=warnMissing+`<div class="card result ${cls}">
+ <h2>${esc(name)}</h2>
+ <div class="kv">
+ <div class="label">Carrier</div><div>${esc(carrier)}</div>
+ <div class="label">PLMN</div><div>${esc(plmn||'Unknown')}</div>
+ <div class="label">LTE/5G</div><div>${esc(radio)}</div>
+ <div class="label">Band</div><div>${esc(fields.band||rec?.bands||'Unknown')}</div>
+ <div class="label">Bandwidth</div><div>${esc(fields.bw||rec?.bandwidth||'Unknown')}</div>
+ <div class="label">${radio==='LTE'?'eNB':'gNB'}</div><div>${esc(sid||'Unknown')}${radio==='5G'&&raw?' ?':''}</div>
+ <div class="label">${radio==='LTE'?'Sector/local cell':'Local cell'}</div><div>${esc(local||'Unknown')}${radio==='5G'&&raw?' ?':''}</div>
+ <div class="label">Cell ID/NCI</div><div>${esc(raw||'Unknown')}</div>
+ <div class="label">PCI</div><div>${esc(fields.pci||'Unknown')}</div>
+ <div class="label">TAC</div><div>${esc(fields.tac||'Unknown')} ${tacnote?'<span class="small muted">('+esc(tacnote)+')</span>':''}</div>
+ </div>
+ <div style="margin-top:12px"><b>Signal: ${icon} ${overall}</b></div>
+ <div class="small">
+ RSRP: ${fields.rsrp?`${rr[1]} ${esc(fields.rsrp)} dBm · ${rr[0]}`:'Unknown'}<br>
+ RSRQ: ${fields.rsrq?`${rq[1]} ${esc(fields.rsrq)} dB · ${rq[0]}`:'Unknown'}<br>
+ SNR/SINR: ${fields.snr?`${sr[1]} ${esc(fields.snr)} dB · ${sr[0]}`:'Unknown'}
+ </div>
+ <div style="margin-top:10px"><b>Math:</b> ${esc(math)}</div>
+ <div class="small muted" style="margin-top:8px">Home carrier: ${esc(home)} · Roaming: ${roaming}</div>
+ ${rec?.notes?'<div class="small" style="margin-top:8px">'+esc(rec.notes)+'</div>':''}
+ </div>`;
+}
+
+
+function normWord(s){
+ return String(s||'').replace(/[^\w/+.-]/g,'').trim();
+}
+
+function wordsToRows(words){
+ const usable=(words||[]).filter(w=>w.text && w.bbox);
+ usable.sort((a,b)=>((a.bbox.y0+a.bbox.y1)/2)-((b.bbox.y0+b.bbox.y1)/2) || a.bbox.x0-b.bbox.x0);
+
+ // Build broad horizontal bands. Diagnostic values can sit far across the screen,
+ // but if their vertical centers are within the same visual row, they belong together.
+ const rows=[];
+ for(const w of usable){
+   const cy=(w.bbox.y0+w.bbox.y1)/2;
+   const h=Math.max(8,w.bbox.y1-w.bbox.y0);
+   let best=null,bestDist=Infinity;
+   for(const r of rows){
+     const d=Math.abs(r.cy-cy);
+     if(d<=Math.max(18,h*1.15,r.avgH*1.15) && d<bestDist){best=r;bestDist=d;}
+   }
+   if(!best){
+     best={cy,avgH:h,words:[]};
+     rows.push(best);
+   }
+   best.words.push(w);
+   best.cy=best.words.reduce((s,x)=>s+(x.bbox.y0+x.bbox.y1)/2,0)/best.words.length;
+   best.avgH=best.words.reduce((s,x)=>s+(x.bbox.y1-x.bbox.y0),0)/best.words.length;
+ }
+ rows.sort((a,b)=>a.cy-b.cy);
+ rows.forEach(r=>r.words.sort((a,b)=>a.bbox.x0-b.bbox.x0));
+ return rows;
+}
+function rowText(row){
+ return row.words.map(w=>w.text).join(' ').replace(/\s+/g,' ').trim();
+}
+
+function valueAcrossFromLabel(rows,labelRegex,valueRegex){
+ for(const row of rows){
+   const words=row.words;
+   const full=rowText(row);
+   if(!labelRegex.test(full)) continue;
+
+   // Locate the label using contiguous word groups.
+   let labelEnd=-1;
+   for(let i=0;i<words.length;i++){
+     let phrase='';
+     for(let j=i;j<Math.min(words.length,i+6);j++){
+       phrase=(phrase+' '+words[j].text).trim();
+       if(labelRegex.test(phrase)){
+         labelEnd=words[j].bbox.x1;
+         break;
+       }
+     }
+     if(labelEnd>=0)break;
+   }
+
+   // Everything horizontally to the right, while remaining in this same line band,
+   // is the candidate value area.
+   if(labelEnd>=0){
+     const rightWords=words.filter(w=>w.bbox.x0>labelEnd+8);
+     for(let take=1;take<=Math.min(6,rightWords.length);take++){
+       // Values are normally at the far right, so test from rightmost backwards.
+       const candidate=rightWords.slice(rightWords.length-take).map(w=>w.text).join(' ');
+       const m=candidate.match(valueRegex);
+       if(m&&m[1])return m[1].trim();
+     }
+     const allRight=rightWords.map(w=>w.text).join(' ');
+     const m=allRight.match(valueRegex);
+     if(m&&m[1])return m[1].trim();
+   }
+ }
+ return '';
+}
+
+function extractDiagnosticTextLines(text){
+ const lines=String(text||'').replace(/\r/g,'').split('\n').map(x=>x.trim()).filter(Boolean);
+ const out={plmn:'',radio:'',cell:'',band:'',bw:'',pci:'',tac:'',rsrp:'',rsrq:'',snr:''};
+
+ function rightOf(labelRe, valueRe){
+   for(const line of lines){
+     if(!labelRe.test(line))continue;
+     const cleaned=line.replace(labelRe,' ').replace(/[:=]/g,' ');
+     const m=cleaned.match(valueRe);
+     if(m&&m[1])return m[1].trim();
+   }
+   return '';
+ }
+
+ out.plmn=rightOf(/\bPLMN\b/i,/(\d{3}\s*\d{2,3})\b/).replace(/\s+/g,'');
+ out.tac=normalizeNum(rightOf(/\bTAC\b/i,/([0-9OoIl|]{1,8})\b/));
+ out.cell=normalizeNum(rightOf(/\bCell\s*[I1l][dD]\b/i,/([0-9OoIl|]{7,15})\b/));
+ out.pci=normalizeNum(rightOf(/\bPCI\b/i,/([0-9OoIl|]{1,4})\b/));
+ out.band=rightOf(/\bBand\b/i,/\b([nNbB]?\s*\d{1,3})\b/).replace(/\s+/g,'');
+ out.bw=rightOf(/\bBandwidth\b/i,/(\d{1,3}\s*MHz)\b/i);
+ out.rsrp=rightOf(/\bRSRP\b/i,/(-?\s*\d{2,3}(?:\.\d+)?)/).replace(/\s+/g,'');
+ out.rsrq=rightOf(/\bRSRQ\b/i,/(-?\s*\d{1,3}(?:\.\d+)?)/).replace(/\s+/g,'');
+ out.snr=rightOf(/\b(?:SNR|SINR)\b/i,/(-?\s*\d{1,3}(?:\.\d+)?)/).replace(/\s+/g,'');
+
+ if(/(?:^|\n)\s*5G\s*(?:\n|$)/im.test(text) || /^n/i.test(out.band))out.radio='5G';
+ else if(/(?:^|\n)\s*LTE\s*(?:\n|$)/im.test(text) || /^B/i.test(out.band))out.radio='LTE';
+
+ return out;
+}
+
+function mergeScanFields(primary,secondary){
+ const x={...primary};
+ for(const k of ['plmn','cell','band','bw','pci','tac','rsrp','rsrq','snr']){
+   if(!x[k] && secondary[k])x[k]=secondary[k];
+ }
+ if(secondary.radio==='5G' || /^n/i.test(x.band||''))x.radio='5G';
+ else if(!x.radio && secondary.radio)x.radio=secondary.radio;
+
+ // Normalize band after merging.
+ if(x.band){
+   x.band=x.band.replace(/\s+/g,'');
+   if(x.radio==='5G'&&!/^n/i.test(x.band))x.band='n'+x.band.replace(/^[Bb]/,'');
+   if(x.radio==='LTE'&&!/^B/i.test(x.band))x.band='B'+x.band.replace(/^[Nn]/,'');
+   if(/^N/.test(x.band))x.band='n'+x.band.slice(1);
+ }
+ x.sid='';x.local='';
+ if(x.cell){
+   try{
+     const n=BigInt(x.cell);
+     if(x.radio==='5G'){x.sid=(n/4096n).toString();x.local=(n%4096n).toString();}
+     else{x.sid=(n/256n).toString();x.local=(n%256n).toString();}
+   }catch(e){}
+ }
+ return x;
+}
+
+function extractScanFieldsSpatial(ocrData){
+ const text=(ocrData?.text||'').replace(/\r/g,'');
+ const rows=wordsToRows(ocrData?.words||[]);
+ let radio=document.getElementById('scanRadio').value;
+
+ // This diagnostic screen has a section header "5G" above the radio card.
+ if(radio==='auto'){
+   // Strong 5G clues: section header, NR/NCI, or n-band. A recognized n-band always wins.
+   radio=/(?:^|\n)\s*5G\s*(?:\n|$)/im.test(text) || /\b(?:NR|NCI|n\s*(?:25|41|71))\b/i.test(text) ? '5G' : 'LTE';
+ }
+
+ function across(labelRe, valueRe){
+   return valueAcrossFromLabel(rows,labelRe,valueRe);
+ }
+
+ // PLMN can appear visually as "310 260". Accept the space and normalize it.
+ let plmn=across(/\bPLMN\b/i,/\b(\d{3}\s+\d{2,3}|\d{5,6})\b/).replace(/\s+/g,'');
+ if(!plmn){
+   const mcc=across(/\bMCC\b/i,/\b(\d{3})\b/);
+   const mnc=across(/\bMNC\b/i,/\b(\d{2,3})\b/);
+   if(mcc&&mnc)plmn=mcc+mnc;
+ }
+ if(!plmn){
+   const known=text.match(/\b(310\s*260|310\s*830|312\s*290|310\s*410|311\s*480|310\s*020|312\s*20)\b/);
+   if(known)plmn=known[1].replace(/\s+/g,'');
+ }
+
+ // The user's diagnostic UI spells this "Cell Id". Accept ID, Id, Identity, NCI, ECI.
+ let cell='';
+ if(radio==='5G'){
+   cell=across(/(?:Cell\s*[I1l][dD]|Cell\s*ID|NCI|NR\s*Cell\s*[I1l][dD]|NR\s*Cell\s*ID|Cell\s*Identity)/i,
+               /\b([0-9OoIl|]{7,15})\b/);
+ }else{
+   cell=across(/(?:Cell\s*[I1l][dD]|Cell\s*ID|ECI|E-UTRAN\s*Cell\s*[I1l][dD]|E-UTRAN\s*Cell\s*ID|Cell\s*Identity)/i,
+               /\b([0-9OoIl|]{5,12})\b/);
+ }
+ cell=normalizeNum(cell);
+
+ // Constrained fallback for the supplied diagnostic layout:
+ // If OCR saw the Cell Id label but row geometry failed, search only a small text
+ // window immediately after that label. This avoids stealing TAC/PCI.
+ if(!cell){
+   const lines=text.split('\n');
+   for(const line of lines){
+     if(/Cell\s*[I1l][dD]/i.test(line)){
+       const after=line.replace(/^.*?Cell\s*[I1l][dD]\s*[:#=\-]?/i,'');
+       const cm=after.match(/([0-9OoIl|]{7,15})/);
+       if(cm){cell=normalizeNum(cm[1]);break;}
+     }
+   }
+ }
+
+ // If 5G was missed initially but the parsed band is later n25/n41/n71,
+ // radio will be corrected after band extraction below.
+ const pci=normalizeNum(across(/\bPCI\b/i,/\b([0-9OoIl|]{1,4})\b/));
+ const tac=normalizeNum(across(/\bTAC\b/i,/\b([0-9OoIl|]{1,8})\b/));
+
+ let band=across(/\bBand\b/i,/\b((?:n|N|B|b)?\s*\d{1,3})\b/).replace(/\s+/g,'');
+ if(band){
+   if(radio==='5G'&&!/^n/i.test(band))band='n'+band.replace(/^[Bb]/,'');
+   if(radio==='LTE'&&!/^B/i.test(band))band='B'+band.replace(/^[Nn]/,'');
+   if(/^N/.test(band))band='n'+band.slice(1);
+ }
+ if(/^n(?:25|41|71)$/i.test(band)) radio='5G';
+ if(/^B/i.test(band) && document.getElementById('scanRadio').value==='auto') radio='LTE';
+
+ // Retry Cell Id after radio correction. The diagnostic UI uses a long NCI for 5G.
+ if(!cell){
+   const lines=text.split('\n');
+   for(const line of lines){
+     if(/Cell\s*[I1l][dD]/i.test(line)){
+       const after=line.replace(/^.*?Cell\s*[I1l][dD]\s*[:#=\-]?/i,'');
+       const cm=after.match(/([0-9OoIl|]{7,15})/);
+       if(cm){cell=normalizeNum(cm[1]);break;}
+     }
+   }
+ }
+
+ let bw=across(/\bBandwidth\b/i,/\b(\d{1,3}\s*MHz)\b/i);
+ let rsrp=across(/\bRSRP\b/i,/(-?\s*\d{2,3}(?:\.\d+)?\s*(?:dBm)?)/i)
+   .replace(/dBm/i,'').replace(/\s+/g,'');
+ let rsrq=across(/\bRSRQ\b/i,/(-?\s*\d{1,3}(?:\.\d+)?\s*(?:dB)?)/i)
+   .replace(/dB/i,'').replace(/\s+/g,'');
+ let snr=across(/\b(?:SNR|SINR)\b/i,/(-?\s*\d{1,3}(?:\.\d+)?\s*(?:dB)?)/i)
+   .replace(/dB/i,'').replace(/\s+/g,'');
+
+ let sid='',local='';
+ if(cell){
+   try{
+     const n=BigInt(cell);
+     if(radio==='LTE'){
+       sid=(n/256n).toString();
+       local=(n%256n).toString();
+     }else{
+       sid=(n/4096n).toString();
+       local=(n%4096n).toString();
+     }
+   }catch(e){}
+ }
+
+ return {radio,plmn,cell,sid,local,band,bw,pci,tac,rsrp,rsrq,snr};
+}
+function identifyFromScan(fields){
+ if(!DB)return;
+ const plmn=fields.plmn||'', radio=fields.radio||'LTE', raw=fields.cell||'', sid=fields.sid||'';
+
+ if(!plmn || !raw || !sid){
+   const missing=[];
+   if(!plmn)missing.push('PLMN');
+   if(!raw)missing.push('Cell ID/NCI');
+   if(raw&&!sid)missing.push(radio==='LTE'?'eNB':'gNB');
+   document.getElementById('scanIdentity').innerHTML=
+     `<div class="notice"><b>Scan not identified yet.</b> Missing ${esc(missing.join(', '))}. `+
+     `The app will not substitute TAC, PCI, or another number for Cell ID/NCI.</div>`;
+   return;
+ }
+
+ const carrier=DB.plmns[plmn]||'Unknown';
+ const home=document.getElementById('scanHome').value;
+ const roaming=(carrier!=='Unknown'&&carrier!==home&&carrier!=='T-Mobile Starlink')?'Yes':'No';
+ const rec=DB.records.find(r=>r.carrier===carrier&&r.radio===radio&&String(r.eNB||r.gNB)===String(sid));
+
+ let cls='unknown',name='UNMAPPED / UNKNOWN ?';
+ if(rec){name=rec.site;cls=rec.status==='confirmed'?'ok':rec.status==='provisional'?'prov':'unknown';}
+ if(carrier==='STRATA Networks'&&sid==='1079'){name='UNMAPPED STRATA SITE ?';cls='unknown';}
+
+ const rr=signalRating('rsrp',fields.rsrp),rq=signalRating('rsrq',fields.rsrq),sr=signalRating('snr',fields.snr);
+ const vals=[]; if(fields.rsrp)vals.push(rr); if(fields.rsrq)vals.push(rq); if(fields.snr)vals.push(sr);
+ let overall='Unknown',icon='⚪';
+ if(vals.length){
+   const rank={'Excellent':4,'Good':3,'Fair':2,'Poor':1,'Very Poor':0};
+   const m=Math.min(...vals.map(x=>rank[x[0]]??0));
+   overall=Object.keys(rank).find(k=>rank[k]===m)||'Unknown';
+   icon=m>=3?'🟢':m===2?'🟡':m===1?'🟠':'🔴';
+ }
+
+ let math='';
+ try{
+   const n=BigInt(raw);
+   if(radio==='LTE'){
+     const e=n/256n,s=n%256n,rev=e*256n+s;
+     math=`${raw} // 256 = ${e}, remainder ${s}. Reverse: ${e} × 256 + ${s} = ${rev} ${(String(e)===sid&&rev===n)?'✅':'❌'}`;
+   }else{
+     const g=n/4096n,l=n%4096n,rev=g*4096n+l;
+     math=`Assumed 12-bit split ?: ${raw} // 4096 = ${g}, remainder ${l}. Reverse: ${g} × 4096 + ${l} = ${rev} ${(String(g)===sid&&rev===n)?'✅':'❌'}`;
+   }
+ }catch(e){}
+
+ let tacnote='';
+ if(carrier==='STRATA Networks'&&fields.tac){
+   tacnote=fields.tac==='101'?'Other carriers NOT allowed to roam':fields.tac==='102'?'Other carriers ARE allowed to roam':'';
+ }
+
+ document.getElementById('scanIdentity').innerHTML=`<div class="card result ${cls}">
+ <h2>${esc(name)}</h2>
+ <div class="kv">
+ <div class="label">Carrier</div><div>${esc(carrier)}</div>
+ <div class="label">PLMN</div><div>${esc(plmn)}</div>
+ <div class="label">LTE/5G</div><div>${esc(radio)}</div>
+ <div class="label">Band</div><div>${esc(fields.band||rec?.bands||'Unknown')}</div>
+ <div class="label">Bandwidth</div><div>${esc(fields.bw||rec?.bandwidth||'Unknown')}</div>
+ <div class="label">${radio==='LTE'?'eNB':'gNB'}</div><div>${esc(sid)}${radio==='5G'?' ?':''}</div>
+ <div class="label">${radio==='LTE'?'Sector/local cell':'Local cell'}</div><div>${esc(fields.local||'Unknown')}${radio==='5G'?' ?':''}</div>
+ <div class="label">Cell ID/NCI</div><div>${esc(raw)}</div>
+ <div class="label">PCI</div><div>${esc(fields.pci||'Unknown')}</div>
+ <div class="label">TAC</div><div>${esc(fields.tac||'Unknown')} ${tacnote?'<span class="small muted">('+esc(tacnote)+')</span>':''}</div>
+ </div>
+ <div style="margin-top:12px"><b>Signal: ${icon} ${overall}</b></div>
+ <div class="small">RSRP: ${fields.rsrp?`${rr[1]} ${esc(fields.rsrp)} dBm · ${rr[0]}`:'Unknown'}<br>
+ RSRQ: ${fields.rsrq?`${rq[1]} ${esc(fields.rsrq)} dB · ${rq[0]}`:'Unknown'}<br>
+ SNR/SINR: ${fields.snr?`${sr[1]} ${esc(fields.snr)} dB · ${sr[0]}`:'Unknown'}</div>
+ <div style="margin-top:10px"><b>Math:</b> ${esc(math)}</div>
+ <div class="small muted" style="margin-top:8px">Home carrier: ${esc(home)} · Roaming: ${roaming}</div>
+ </div>`;
+}
+
+function fillScanResults(x,text){
+ document.getElementById('sPlmn').value=x.plmn;
+ document.getElementById('sRadio').value=x.radio;
+ document.getElementById('sCell').value=x.cell;
+ document.getElementById('sId').value=x.sid;
+ document.getElementById('sLocal').value=x.local;
+ document.getElementById('sBand').value=x.band;
+ document.getElementById('sBw').value=x.bw;
+ document.getElementById('sPci').value=x.pci;
+ document.getElementById('sTac').value=x.tac;
+ document.getElementById('sRsrp').value=x.rsrp;
+ document.getElementById('sRsrq').value=x.rsrq;
+ document.getElementById('sSnr').value=x.snr;
+ document.getElementById('ocrText').value=text;
+ document.getElementById('scanResults').classList.remove('hidden');
+ copyToLookupBtn.disabled=false;
+ identifyFromScan(x);
+}
+
+
+async function makeEnhancedImage(file){
+ return new Promise((resolve,reject)=>{
+   const img=new Image(),url=URL.createObjectURL(file);
+   img.onload=()=>{
+     try{
+       const scale=Math.max(2,Math.min(3,2400/img.width));
+       const c=document.createElement('canvas');
+       c.width=Math.round(img.width*scale);c.height=Math.round(img.height*scale);
+       const ctx=c.getContext('2d');
+       ctx.drawImage(img,0,0,c.width,c.height);
+       const d=ctx.getImageData(0,0,c.width,c.height),p=d.data;
+       for(let i=0;i<p.length;i+=4){
+         const g=.299*p[i]+.587*p[i+1]+.114*p[i+2];
+         const v=g>145?255:(g<45?0:Math.max(0,Math.min(255,(g-45)*2.55)));
+         p[i]=p[i+1]=p[i+2]=v;
+       }
+       ctx.putImageData(d,0,0);
+       c.toBlob(b=>{URL.revokeObjectURL(url);resolve(b);},'image/png',1);
+     }catch(e){URL.revokeObjectURL(url);reject(e);}
+   };
+   img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('Image load failed'));};
+   img.src=url;
+ });
+}
+
+
+function refreshFromScanInputs(){
+ let x={
+   plmn:normalizeNum(document.getElementById('sPlmn').value),
+   radio:document.getElementById('sRadio').value,
+   cell:normalizeNum(document.getElementById('sCell').value),
+   band:document.getElementById('sBand').value.trim(),
+   bw:document.getElementById('sBw').value.trim(),
+   pci:normalizeNum(document.getElementById('sPci').value),
+   tac:normalizeNum(document.getElementById('sTac').value),
+   rsrp:document.getElementById('sRsrp').value.trim(),
+   rsrq:document.getElementById('sRsrq').value.trim(),
+   snr:document.getElementById('sSnr').value.trim(),
+   sid:'',local:''
+ };
+ if(x.cell){
+   try{
+     const n=BigInt(x.cell);
+     if(x.radio==='5G'){x.sid=(n/4096n).toString();x.local=(n%4096n).toString();}
+     else{x.sid=(n/256n).toString();x.local=(n%256n).toString();}
+   }catch(e){}
+ }
+ document.getElementById('sId').value=x.sid;
+ document.getElementById('sLocal').value=x.local;
+ identifyFromScan(x);
+}
+['sPlmn','sRadio','sCell','sBand','sBw','sPci','sTac','sRsrp','sRsrq','sSnr'].forEach(id=>{
+ const el=document.getElementById(id);
+ el.addEventListener('input',refreshFromScanInputs);
+ el.addEventListener('change',refreshFromScanInputs);
+});
+
+runOcrBtn.addEventListener('click',async()=>{
+ const f=scanImage.files&&scanImage.files[0];
+ if(!f){document.getElementById('ocrStatus').textContent='Choose a screenshot first.';return;}
+ if(!window.Tesseract){document.getElementById('ocrStatus').textContent='OCR engine did not load.';return;}
+ runOcrBtn.disabled=true;
+ document.getElementById('scanIdentity').innerHTML='';
+ try{
+   document.getElementById('ocrStatus').textContent='Scanning and autofilling fields…';
+   const enhanced=await makeEnhancedImage(f);
+   const r1=await Tesseract.recognize(enhanced,'eng',{
+     logger:m=>{if(m.status==='recognizing text')document.getElementById('ocrStatus').textContent=`Enhanced scan ${Math.round((m.progress||0)*100)}%…`;}
+   });
+   const d1=r1?.data||{};
+   let fields=mergeScanFields(extractScanFieldsSpatial(d1),extractDiagnosticTextLines(d1.text||''));
+
+   // Always do a second pass on the original. Merge whichever pass reads each row best.
+   const r2=await Tesseract.recognize(f,'eng',{
+     logger:m=>{if(m.status==='recognizing text')document.getElementById('ocrStatus').textContent=`Original scan ${Math.round((m.progress||0)*100)}%…`;}
+   });
+   const d2=r2?.data||{};
+   fields=mergeScanFields(fields,extractScanFieldsSpatial(d2));
+   fields=mergeScanFields(fields,extractDiagnosticTextLines(d2.text||''));
+
+   fillScanResults(fields,(d1.text||'')+'\n--- ORIGINAL PASS ---\n'+(d2.text||''));
+
+   if(fields.plmn&&fields.cell){
+     document.getElementById('ocrStatus').textContent='Autofill complete. Connection identified from the screenshot.';
+   }else{
+     const miss=[];if(!fields.plmn)miss.push('PLMN');if(!fields.cell)miss.push('Cell ID/NCI');
+     document.getElementById('ocrStatus').textContent='Autofill completed, but OCR still missed: '+miss.join(', ')+'.';
+   }
+ }catch(e){
+   document.getElementById('ocrStatus').textContent='OCR failed on this image.';
+ }
+ runOcrBtn.disabled=false;
+});
+
+copyToLookupBtn.addEventListener('click',()=>{
+ document.getElementById('home').value=document.getElementById('scanHome').value;
+ document.getElementById('plmn').value=document.getElementById('sPlmn').value;
+ document.getElementById('radio').value=document.getElementById('sRadio').value;
+ document.getElementById('cellid').value=document.getElementById('sCell').value;
+ document.getElementById('siteid').value=document.getElementById('sId').value;
+ document.getElementById('lookupBand').value=document.getElementById('sBand').value;
+ document.getElementById('lookupBw').value=document.getElementById('sBw').value;
+ document.getElementById('lookupPci').value=document.getElementById('sPci').value;
+ document.getElementById('lookupTac').value=document.getElementById('sTac').value;
+ document.getElementById('rsrp').value=document.getElementById('sRsrp').value;
+ document.getElementById('rsrq').value=document.getElementById('sRsrq').value;
+ document.getElementById('snr').value=document.getElementById('sSnr').value;
+ showTab('lookup',document.querySelectorAll('.tab')[0]);
+ lookup();
+});
+
+</script>
+</body>
+</html>
