@@ -76,3 +76,12 @@ AUTOFILL FIX v13:
 - Uses both spatial row extraction and same-line diagnostic parsing.
 - Explicitly autofills all Scan result fields after OCR.
 - Manual corrections instantly recalculate eNB/gNB/local cell and re-identify the registry match.
+
+SIMPLIFIED AUTO SCAN v15:
+- Removed Home Carrier selector from Scan.
+- Removed Radio Type selector from Scan.
+- Screenshot automatically determines PLMN and LTE/5G.
+- Scan & Identify automatically fills/identifies from the picture.
+- Lookup is now a simple Cell ID/NCI box.
+- Quick Lookup automatically tests LTE /256 and current 5G /4096 registry matches.
+- Existing Registry, Add/Edit, Backup, PIN lock, GitHub Pages and PWA support preserved.
