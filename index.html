@@ -182,13 +182,13 @@ button.good{background:#166534}
 
 <section id="tab-add" class="hidden">
 <div class="card">
-<h3 id="formTitle">Add Tower</h3><p class="muted small">Future carriers are supported: type any new carrier name and its PLMN. Saving the tower also adds that carrier/PLMN to the app.</p>
+<h3 id="formTitle">Add Tower</h3><p class="muted small">Type an existing eNB/gNB and the app will autofill all saved details. If a scan or lookup finds an unknown ID, the app can open this form with everything it already knows prefilled. Future carriers are also supported.</p>
 <input type="hidden" id="editKey">
 <div class="grid">
-<div><label>Carrier</label><input id="fCarrier" list="carrierList" placeholder="Carrier name" oninput="syncPlmn()"></div>
+<div><label>Carrier</label><input id="fCarrier" list="carrierList" placeholder="Carrier name" oninput="syncPlmn();autofillTowerById()"></div>
 <div><label>PLMN</label><input id="fPlmn" inputmode="numeric" placeholder="e.g. 310260" oninput="this.dataset.auto='0'"></div>
-<div><label>Radio</label><select id="fRadio" onchange="updateIdLabel()"><option>LTE</option><option>5G</option></select></div>
-<div><label id="idLabel">eNB</label><input id="fId" inputmode="numeric"></div>
+<div><label>Radio</label><select id="fRadio" onchange="updateIdLabel();autofillTowerById()"><option>LTE</option><option>5G</option></select></div>
+<div><label id="idLabel">eNB</label><input id="fId" inputmode="numeric" oninput="autofillTowerById()"></div>
 <div><label>Site name</label><input id="fSite" placeholder="Tower/site name"></div>
 <div><label>Status</label><select id="fStatus"><option value="confirmed">Confirmed</option><option value="provisional">Provisional ?</option><option value="unknown">Unmapped / Unknown ?</option></select></div>
 <div><label>Bands</label><input id="fBands" placeholder="B2 B12 B66 / n41"></div>
@@ -210,6 +210,7 @@ button.good{background:#166534}
 <div id="locationFormStatus" class="small muted" style="margin-top:8px"></div>
 
 <div style="margin-top:10px"><label>Notes</label><textarea id="fNotes"></textarea></div>
+<div id="idAutofillStatus" class="small muted" style="margin:8px 0"></div>
 <div id="formMath" class="small muted" style="margin:10px 0"></div>
 <div class="row">
 <button class="good" onclick="saveRecord()">Save Tower</button>
@@ -428,6 +429,10 @@ function universalLookup(){
          <div class="small">No registry record matched that number directly or through identifier math.</div>
          <div style="margin-top:8px"><b>LTE interpretation:</b> eNB ${esc(enb)}, sector ${esc(sector)}</div>
          <div style="margin-top:5px"><b>5G interpretation ?:</b> gNB ${esc(gnb)} ?, local ${esc(local)} ?</div>
+         <div class="row" style="margin-top:12px">
+           <button class="good" onclick="prepareUnknownFromLookup('${esc(raw)}','LTE','${esc(enb)}','${esc(sector)}')">Add as LTE Tower</button>
+           <button class="good" onclick="prepareUnknownFromLookup('${esc(raw)}','5G','${esc(gnb)}','${esc(local)}')">Add as 5G Tower</button>
+         </div>
        </div>`;
      }catch(e){out.innerHTML='<div class="notice">No matching records.</div>';}
    }else{
@@ -440,6 +445,25 @@ function universalLookup(){
    const m=mathCards.find(x=>x.r===r);
    return recordCard(r,m?m.extra:'');
  }).join('');
+}
+
+
+function prepareUnknownFromLookup(raw,radio,id,local){
+ showTab('add',document.querySelectorAll('.tab')[4]);
+ clearForm();
+
+ document.getElementById('fRadio').value=radio;
+ updateIdLabel();
+ document.getElementById('fId').value=id||'';
+ document.getElementById('fCell').value=raw||'';
+ document.getElementById('fLocal').value=local||'';
+ document.getElementById('fStatus').value='unknown';
+ document.getElementById('fSite').value='';
+ document.getElementById('formTitle').textContent='Add Unknown Tower';
+ document.getElementById('idAutofillStatus').textContent='This identifier is not in the registry yet. Enter carrier, PLMN, tower/site name, bands and any other details you know, then save.';
+ document.getElementById('duplicateWarn').innerHTML='<div class="notice"><b>New registry ID.</b> Review the derived ID math before saving.</div>';
+ if(raw)calcFormIds();
+ setTimeout(()=>document.getElementById('fCarrier').focus(),150);
 }
 
 function clearUniversalSearch(){
@@ -683,8 +707,74 @@ function calcFormReverse(){
 }
 function clearForm(){
  ['editKey','fId','fSite','fBands','fBandwidth','fCell','fLocal','fPci','fTac','fLat','fLon','fNotes'].forEach(id=>document.getElementById(id).value='');
- document.getElementById('fCarrier').value='T-Mobile';document.getElementById('fPlmn').dataset.auto='1';document.getElementById('fStatus').value='confirmed';document.getElementById('fRadio').value='LTE';document.getElementById('formTitle').textContent='Add Tower';document.getElementById('duplicateWarn').innerHTML='';syncPlmn();updateIdLabel();
+ document.getElementById('fCarrier').value='T-Mobile';document.getElementById('fPlmn').dataset.auto='1';document.getElementById('fStatus').value='confirmed';document.getElementById('fRadio').value='LTE';document.getElementById('formTitle').textContent='Add Tower';document.getElementById('duplicateWarn').innerHTML='';if(document.getElementById('idAutofillStatus'))document.getElementById('idAutofillStatus').textContent='';syncPlmn();updateIdLabel();
 }
+
+function autofillTowerById(){
+ if(!DB)return;
+ const id=document.getElementById('fId').value.trim();
+ const status=document.getElementById('idAutofillStatus');
+ if(!id){
+   if(status)status.textContent='';
+   return;
+ }
+
+ // Prefer the currently selected radio type, but if there is no match,
+ // try both LTE and 5G because the user may type the ID before choosing radio.
+ let radio=document.getElementById('fRadio').value;
+ let matches=DB.records.filter(r=>{
+   const rid=String(r.eNB||r.gNB||'');
+   return rid===id;
+ });
+
+ if(matches.length===0){
+   if(status)status.textContent='No existing tower matches this ID. You can continue adding it as a new tower.';
+   return;
+ }
+
+ // If multiple carriers somehow share the same numeric ID, prefer current carrier/radio.
+ let rec=
+   matches.find(r=>r.radio===radio && r.carrier===document.getElementById('fCarrier').value.trim()) ||
+   matches.find(r=>r.radio===radio) ||
+   matches[0];
+
+ document.getElementById('fCarrier').value=rec.carrier||'';
+ document.getElementById('fRadio').value=rec.radio||'LTE';
+ updateIdLabel();
+
+ const plmn=rec.plmn || (DB.plmns ? Object.entries(DB.plmns).find(([p,n])=>n===rec.carrier)?.[0] : '') || PLMNS[rec.carrier] || '';
+ document.getElementById('fPlmn').value=plmn;
+ document.getElementById('fPlmn').dataset.auto='1';
+
+ document.getElementById('fSite').value=rec.site||'';
+ document.getElementById('fStatus').value=rec.status||'confirmed';
+ document.getElementById('fBands').value=rec.bands||'';
+ document.getElementById('fBandwidth').value=rec.bandwidth||'';
+ document.getElementById('fCell').value=rec.cell_id||'';
+ document.getElementById('fLocal').value=rec.local_cell||'';
+ document.getElementById('fPci').value=rec.pci||'';
+ document.getElementById('fTac').value=rec.tac||'';
+ if(document.getElementById('fLat'))document.getElementById('fLat').value=rec.latitude||'';
+ if(document.getElementById('fLon'))document.getElementById('fLon').value=rec.longitude||'';
+ document.getElementById('fNotes').value=rec.notes||'';
+
+ document.getElementById('editKey').value=keyOf(rec);
+ document.getElementById('formTitle').textContent='Edit Tower';
+
+ // If Cell ID/NCI is saved, regenerate math so the relationship is visible.
+ if(rec.cell_id){
+   calcFormIds();
+ }else if(rec.local_cell){
+   calcFormReverse();
+ }
+
+ if(status){
+   const extra=matches.length>1 ? ` (${matches.length} records share this numeric ID; selected ${rec.carrier} ${rec.radio}.)` : '';
+   status.textContent=`Existing tower found: ${rec.site} · ${rec.carrier} · ${rec.radio}.${extra}`;
+ }
+}
+
+
 function saveRecord(){
  if(!DB)return;
  const carrier=document.getElementById('fCarrier').value,radio=document.getElementById('fRadio').value,id=document.getElementById('fId').value.trim(),site=document.getElementById('fSite').value.trim();
@@ -881,6 +971,9 @@ function identifyFromScan(fields){
  }
 
  let tacnote='';
+ const unknownAddButton = !rec
+   ? `<div style="margin-top:12px"><button class="good" onclick='prepareUnknownTowerFromScan(${JSON.stringify(fields)})'>Add This Tower</button></div>`
+   : '';
  if(carrier==='STRATA Networks'&&fields.tac){
    tacnote=fields.tac==='101'?'Other carriers NOT allowed to roam':
            fields.tac==='102'?'Other carriers ARE allowed to roam':'No special TAC rule stored';
@@ -913,6 +1006,7 @@ function identifyFromScan(fields){
  <div style="margin-top:10px"><b>Math:</b> ${esc(math)}</div>
  
  ${rec?.notes?'<div class="small" style="margin-top:8px">'+esc(rec.notes)+'</div>':''}
+ ${unknownAddButton}
  </div>`;
 }
 
@@ -1193,6 +1287,9 @@ function identifyFromScan(fields){
  }catch(e){}
 
  let tacnote='';
+ const unknownAddButton = !rec
+   ? `<div style="margin-top:12px"><button class="good" onclick='prepareUnknownTowerFromScan(${JSON.stringify(fields)})'>Add This Tower</button></div>`
+   : '';
  if(carrier==='STRATA Networks'&&fields.tac){
    tacnote=fields.tac==='101'?'Other carriers NOT allowed to roam':fields.tac==='102'?'Other carriers ARE allowed to roam':'';
  }
@@ -1218,6 +1315,54 @@ function identifyFromScan(fields){
  <div style="margin-top:10px"><b>Math:</b> ${esc(math)}</div>
  
  </div>`;
+}
+
+
+function prepareUnknownTowerFromScan(fields){
+ if(!fields)return;
+
+ showTab('add',document.querySelectorAll('.tab')[4]);
+
+ clearForm();
+
+ const carrier=(DB && DB.plmns && fields.plmn) ? (DB.plmns[fields.plmn]||'') : '';
+ document.getElementById('fCarrier').value=carrier || '';
+ document.getElementById('fPlmn').value=fields.plmn||'';
+ document.getElementById('fPlmn').dataset.auto='0';
+
+ document.getElementById('fRadio').value=fields.radio||'LTE';
+ updateIdLabel();
+
+ document.getElementById('fId').value=fields.sid||'';
+ document.getElementById('fStatus').value='unknown';
+
+ // For a brand-new scanned tower, leave the site name intentionally blank.
+ // User confirms the actual tower name rather than the app inventing one.
+ document.getElementById('fSite').value='';
+
+ document.getElementById('fBands').value=fields.band||'';
+ document.getElementById('fBandwidth').value=fields.bw||'';
+ document.getElementById('fCell').value=fields.cell||'';
+ document.getElementById('fLocal').value=fields.local||'';
+ document.getElementById('fPci').value=fields.pci||'';
+ document.getElementById('fTac').value=fields.tac||'';
+
+ const noteParts=[];
+ noteParts.push('Added from screenshot scan.');
+ if(fields.rsrp)noteParts.push(`RSRP ${fields.rsrp}`);
+ if(fields.rsrq)noteParts.push(`RSRQ ${fields.rsrq}`);
+ if(fields.snr)noteParts.push(`SNR/SINR ${fields.snr}`);
+ document.getElementById('fNotes').value=noteParts.join(' · ');
+
+ document.getElementById('editKey').value='';
+ document.getElementById('formTitle').textContent='Add Unknown Tower';
+ document.getElementById('idAutofillStatus').textContent='New tower from screenshot. Review the autofilled values, enter the tower/site name and any missing details, then save.';
+ document.getElementById('duplicateWarn').innerHTML='<div class="notice"><b>New registry ID.</b> This scanned eNB/gNB is not currently in the registry.</div>';
+
+ if(fields.cell)calcFormIds();
+
+ // Focus the site name because that is normally the main missing human-confirmed field.
+ setTimeout(()=>document.getElementById('fSite').focus(),150);
 }
 
 function fillScanResults(x,text){

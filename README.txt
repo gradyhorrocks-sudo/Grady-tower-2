@@ -111,3 +111,21 @@ TOWER MAP v18:
 - Existing towers without coordinates remain valid and can be mapped later.
 - Existing Scan, universal Lookup, future-carrier support, Registry, Add/Edit, Backup,
   fixed PIN 159357, GitHub Pages, and Safari Home Screen/PWA support preserved.
+
+ID AUTOFILL v19:
+- In Add/Edit, typing an existing eNB/gNB automatically finds the matching registry record.
+- Autofills carrier, PLMN, LTE/5G, site name, status, bands, bandwidth, saved Cell ID/NCI,
+  sector/local cell, PCI, TAC, coordinates, and notes.
+- Automatically switches the form into Edit mode for the matched record.
+- If more than one record shares the same numeric ID, current carrier/radio is preferred.
+- Existing Scan, universal Lookup, Map, future-carrier support, Backup, fixed PIN 159357,
+  GitHub Pages and Safari Home Screen/PWA support preserved.
+
+UNKNOWN TOWER ADD FLOW v20:
+- If Scan & Identify derives an eNB/gNB that is not in the registry, an Add This Tower button appears.
+- Add/Edit opens with all scanned values prefilled: PLMN/carrier when known, radio, eNB/gNB,
+  Cell ID/NCI, sector/local cell, band, bandwidth, PCI, TAC, and scan signal notes.
+- Site name remains blank so the user confirms the real tower name instead of the app inventing one.
+- Unknown numeric Lookup results also offer Add as LTE Tower / Add as 5G Tower.
+- Existing Scan, universal Lookup, Registry, Map, ID autofill, future-carrier support,
+  Backup, fixed PIN 159357, GitHub Pages and Safari Home Screen/PWA support preserved.
