@@ -163,3 +163,12 @@ DRAGGABLE MAP EDIT v24:
 - Stop Editing exits the map-edit mode.
 - Existing coordinate-paste updater, satellite/street map, Registry globe indicator,
   Scan, Lookup, Add/Edit, Backup, fixed PIN 159357, GitHub Pages and PWA support preserved.
+
+MAP LINK PARSER v25:
+- Map > Update Tower Location accepts plain coordinates, Apple Maps links, and Google Maps links.
+- Supports Apple Maps ll/sll/center/q coordinate formats.
+- Supports Google Maps @lat,lon and !3dLAT!4dLON formats.
+- Paste From Clipboard can pull the copied Maps link directly when Safari allows clipboard access.
+- The extracted coordinates immediately update the chosen eNB/gNB location and map pin.
+- Existing draggable/tap map editing, satellite/street layers, Registry globe, Scan, Lookup,
+  Add/Edit, Backup, fixed PIN 159357, GitHub Pages and PWA support preserved.

@@ -187,12 +187,13 @@ button.good{background:#166534}
 <input id="mapUpdateId" inputmode="numeric" placeholder="1070">
 </div>
 <div>
-<label>Coordinates</label>
-<input id="mapUpdateCoords" placeholder="40.455500, -109.528700">
+<label>Coordinates or Maps Link</label>
+<input id="mapUpdateCoords" placeholder="40.455500, -109.528700 or Apple/Google Maps link">
 </div>
 </div>
 <div style="margin-top:10px">
 <button onclick="updateTowerLocationById()">Update Location</button>
+<button class="secondary" style="margin-top:8px" onclick="pasteMapLocationFromClipboard()">Paste From Clipboard</button>
 </div>
 <div id="mapUpdateStatus" class="small muted" style="margin-top:8px"></div>
 </div>
@@ -315,6 +316,14 @@ function unlockApp(){
    if(msg)msg.textContent='Incorrect PIN.';
  }
 }
+
+
+document.addEventListener('DOMContentLoaded',()=>{
+ const mi=document.getElementById('mapUpdateId');
+ const mc=document.getElementById('mapUpdateCoords');
+ if(mi)mi.addEventListener('keydown',e=>{if(e.key==='Enter')updateTowerLocationById();});
+ if(mc)mc.addEventListener('keydown',e=>{if(e.key==='Enter')updateTowerLocationById();});
+});
 
 document.addEventListener('DOMContentLoaded',()=>{
  const btn=document.getElementById('lockBtn');
@@ -608,6 +617,109 @@ function renderTowerMap(){
  }
  document.getElementById('mapStatus').textContent=`${towerMarkers.length} saved tower location${towerMarkers.length===1?'':'s'} shown.`;
 }
+
+
+function parseMapsLocation(raw){
+ let s=String(raw||'').trim();
+ if(!s)return null;
+ try{s=decodeURIComponent(s);}catch(e){}
+
+ // Apple Maps: ?ll=lat,lon / ?sll=lat,lon / ?center=lat,lon
+ let m=s.match(/[?&](?:ll|sll|center)=(-?\d{1,3}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)/i);
+ if(m){
+   const lat=Number(m[1]),lon=Number(m[2]);
+   if(validCoord(lat,-90,90)&&validCoord(lon,-180,180))return {lat,lon};
+ }
+
+ // Apple Maps / Google Maps query parameters containing coordinates.
+ m=s.match(/[?&](?:q|query|destination|daddr)=(-?\d{1,3}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)/i);
+ if(m){
+   const lat=Number(m[1]),lon=Number(m[2]);
+   if(validCoord(lat,-90,90)&&validCoord(lon,-180,180))return {lat,lon};
+ }
+
+ // Google Maps: /@lat,lon,zoom
+ m=s.match(/@(-?\d{1,3}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)(?:,|$)/);
+ if(m){
+   const lat=Number(m[1]),lon=Number(m[2]);
+   if(validCoord(lat,-90,90)&&validCoord(lon,-180,180))return {lat,lon};
+ }
+
+ // Google place links: !3dLAT!4dLON
+ m=s.match(/!3d(-?\d{1,3}(?:\.\d+)?)!4d(-?\d{1,3}(?:\.\d+)?)/i);
+ if(m){
+   const lat=Number(m[1]),lon=Number(m[2]);
+   if(validCoord(lat,-90,90)&&validCoord(lon,-180,180))return {lat,lon};
+ }
+
+ // Plain copied coordinates or share text.
+ const nums=s.replace(/[°º]/g,' ').replace(/[()]/g,' ').match(/-?\d{1,3}(?:\.\d+)?/g);
+ if(nums&&nums.length>=2){
+   for(let i=0;i<nums.length-1;i++){
+     const lat=Number(nums[i]),lon=Number(nums[i+1]);
+     if(validCoord(lat,-90,90)&&validCoord(lon,-180,180))return {lat,lon};
+   }
+ }
+ return null;
+}
+
+function updateTowerLocationById(){
+ if(!DB)return;
+ const id=document.getElementById('mapUpdateId').value.trim().replace(/[^\d]/g,'');
+ const raw=document.getElementById('mapUpdateCoords').value.trim();
+ const status=document.getElementById('mapUpdateStatus');
+
+ if(!id){status.textContent='Enter an eNB or gNB.';return;}
+
+ const coords=parseMapsLocation(raw);
+ if(!coords){
+   status.textContent='Paste decimal coordinates or an Apple Maps / Google Maps link containing coordinates.';
+   return;
+ }
+
+ const matches=DB.records.filter(r=>String(r.eNB||r.gNB||'')===id);
+ if(!matches.length){
+   status.innerHTML=`No tower with eNB/gNB <b>${esc(id)}</b> is in the registry.`;
+   return;
+ }
+
+ if(matches.length>1){
+   const options=matches.map((r,i)=>`${i+1}. ${r.carrier} · ${r.radio} · ${r.site}`).join(' | ');
+   status.innerHTML=`More than one tower uses ID <b>${esc(id)}</b>: ${esc(options)}. Open Add/Edit and choose the exact record first.`;
+   return;
+ }
+
+ const r=matches[0];
+ r.latitude=coords.lat.toFixed(6);
+ r.longitude=coords.lon.toFixed(6);
+
+ saveLocal();
+ renderRegistry();
+ if(towerMap){
+   renderTowerMap();
+   towerMap.setView([coords.lat,coords.lon],16);
+ }
+
+ status.innerHTML=`🌐 Updated <b>${esc(r.site)}</b> to ${coords.lat.toFixed(6)}, ${coords.lon.toFixed(6)}.`;
+ toast('Tower location updated.');
+}
+
+async function pasteMapLocationFromClipboard(){
+ const status=document.getElementById('mapUpdateStatus');
+ try{
+   const text=await navigator.clipboard.readText();
+   document.getElementById('mapUpdateCoords').value=text;
+   const coords=parseMapsLocation(text);
+   if(coords){
+     status.textContent=`Found ${coords.lat.toFixed(6)}, ${coords.lon.toFixed(6)}. Tap Update Location to save.`;
+   }else{
+     status.textContent='Clipboard did not contain recognizable Apple Maps, Google Maps, or decimal coordinates.';
+   }
+ }catch(e){
+   status.textContent='Safari did not allow clipboard access. Paste the Maps link manually.';
+ }
+}
+
 
 function selectTowerForMapEdit(){
  if(!DB)return;
