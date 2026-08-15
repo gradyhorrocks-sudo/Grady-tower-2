@@ -294,3 +294,20 @@ CLEAR CURRENT PICTURE v38:
 - Also clears OCR/results/identity fields and unfinished scan-to-map state.
 - Selecting or pasting the next screenshot restores the preview normally.
 - All v37 and earlier functionality is preserved.
+
+IOS SCAN CLEAR + PASTE v39:
+- Clear Scan now recreates both the file input and screenshot preview image nodes.
+  This avoids iOS Safari/PWA retaining the old selected file or decoded image.
+- Direct Paste Current Clipboard still reads the image clipboard when Safari grants Clipboard API access.
+- Added an iOS-native Paste Photo Here target. Tap it and choose Paste from the iOS menu;
+  the paste event reads the copied image directly and loads it into Scan.
+- Scanner always uses the current selected/pasted image.
+- All v38 and earlier registry functionality is preserved.
+
+UNKNOWN SCAN AUTO-ADD v40:
+- When Scan & Identify derives a valid PLMN + eNB/gNB that is not in the registry, Add Unknown Scanned Tower opens automatically.
+- Screenshot-derived carrier (when known), PLMN, LTE/5G, eNB/gNB, Cell ID/NCI, sector/local cell, band, bandwidth, PCI, TAC, and signal notes are prefilled.
+- Tower/site name remains blank for user confirmation.
+- Save Tower to Registry uses the actual DB.records/saveRecord path, then clears the unresolved Unknown scan state.
+- Removed a misplaced old auto-route from Cancel Scanned Tower Placement.
+- All v39 functionality is preserved.

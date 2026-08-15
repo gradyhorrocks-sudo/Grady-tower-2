@@ -196,11 +196,14 @@ main, .container, .content{
 
 <div>
 <label>Screenshot</label>
-<input id="scanImage" type="file" accept="image/*">
+<div id="scanInputHost"><input id="scanImage" type="file" accept="image/*"></div>
 <div class="row" style="margin-top:10px">
 <button type="button" class="secondary" onclick="pasteScanImage()">Paste Current Clipboard</button>
 <button type="button" class="danger" onclick="clearScanPage()">✕ Clear Scan</button>
 </div>
+<div id="iosPasteTarget" contenteditable="true" inputmode="none" spellcheck="false"
+     style="margin-top:10px;padding:12px;border:1px dashed #888;border-radius:10px;min-height:46px"
+     aria-label="Paste photo here">Tap here, then choose Paste to paste a copied photo</div>
 <div id="scanPasteStatus" class="small muted" style="margin-top:8px"></div>
 </div>
 
@@ -1140,72 +1143,89 @@ function resetRegistry(){
 }
 
 let scanObjectUrl=null;
-const scanImage=document.getElementById('scanImage');
+let scanImage=document.getElementById('scanImage');
 const runOcrBtn=document.getElementById('runOcrBtn');
 
-scanImage.addEventListener('change',()=>{
- const f=(scanImage.files&&scanImage.files[0]) || window._pastedScanFile;
- if(!f)return;
- if(scanObjectUrl)URL.revokeObjectURL(scanObjectUrl);
- scanObjectUrl=URL.createObjectURL(f);
+function showScanFile(file){
+ if(!file)return;
+ window._pastedScanFile=file;
+
+ if(scanObjectUrl){
+   try{URL.revokeObjectURL(scanObjectUrl);}catch(e){}
+ }
+ scanObjectUrl=URL.createObjectURL(file);
+
  const preview=document.getElementById('scanPreview');
  const wrap=document.getElementById('scanPreviewWrap');
- preview.style.display='';
- preview.src=scanObjectUrl;
- wrap.style.display='';
- wrap.classList.remove('hidden');
- document.getElementById('ocrStatus').textContent='Image selected. Tap Scan Screenshot.';
- document.getElementById('scanResults').classList.add('hidden');
- document.getElementById('scanIdentity').innerHTML='';
+ if(preview){
+   preview.style.display='';
+   preview.src=scanObjectUrl;
+   preview.classList.remove('hidden');
+ }
+ if(wrap){
+   wrap.style.display='';
+   wrap.classList.remove('hidden');
+ }
 
-});
+ const ocrStatus=document.getElementById('ocrStatus');
+ if(ocrStatus)ocrStatus.textContent='Image selected. Tap Scan Screenshot.';
+ const results=document.getElementById('scanResults');
+ if(results)results.classList.add('hidden');
+ const identity=document.getElementById('scanIdentity');
+ if(identity)identity.innerHTML='';
+}
 
+function bindScanInput(){
+ scanImage=document.getElementById('scanImage');
+ if(!scanImage)return;
+ scanImage.onchange=()=>{
+   const f=scanImage.files&&scanImage.files[0];
+   if(f)showScanFile(f);
+ };
+}
+bindScanInput();
 
 function clearScanPage(){
+ window._currentUnknownScanFields=null;
+ window._unknownScanFormSignature=null;
  window._pastedScanFile=null;
-
- const input=document.getElementById('scanImage');
- if(input)input.value='';
 
  if(scanObjectUrl){
    try{URL.revokeObjectURL(scanObjectUrl);}catch(e){}
    scanObjectUrl=null;
  }
 
- const preview=document.getElementById('scanPreview');
- if(preview){
-   preview.removeAttribute('src');
-   preview.src='';
-   preview.style.display='none';
+ // Recreate the file input. This is more reliable than value='' on iOS Safari/PWA.
+ const host=document.getElementById('scanInputHost');
+ if(host){
+   host.innerHTML='<input id="scanImage" type="file" accept="image/*">';
+   bindScanInput();
  }
 
+ // Recreate the preview image itself so Safari cannot retain the old decoded bitmap.
  const wrap=document.getElementById('scanPreviewWrap');
  if(wrap){
+   wrap.innerHTML='<img id="scanPreview" alt="Screenshot preview">';
    wrap.classList.add('hidden');
    wrap.style.display='none';
  }
 
+ const pasteTarget=document.getElementById('iosPasteTarget');
+ if(pasteTarget){
+   pasteTarget.innerHTML='Tap here, then choose Paste to paste a copied photo';
+ }
+
  const results=document.getElementById('scanResults');
  if(results)results.classList.add('hidden');
-
  const identity=document.getElementById('scanIdentity');
  if(identity)identity.innerHTML='';
-
  const raw=document.getElementById('ocrRaw');
  if(raw)raw.value='';
-
- const ocrStatus=document.getElementById('ocrStatus');
- if(ocrStatus)ocrStatus.textContent='';
-
- const scanStatus=document.getElementById('scanStatus');
- if(scanStatus)scanStatus.textContent='';
-
- const pasteStatus=document.getElementById('scanPasteStatus');
- if(pasteStatus)pasteStatus.textContent='';
-
+ ['ocrStatus','scanStatus','scanPasteStatus'].forEach(id=>{
+   const el=document.getElementById(id); if(el)el.textContent='';
+ });
  ['sPlmn','sRadio','sBand','sBw','sCell','sSid','sLocal','sPci','sTac','sRsrp','sRsrq','sSnr'].forEach(id=>{
-   const el=document.getElementById(id);
-   if(el)el.value='';
+   const el=document.getElementById(id); if(el)el.value='';
  });
 
  pendingScannedTowerForMap=null;
@@ -1213,16 +1233,60 @@ function clearScanPage(){
    pendingPickMarker.remove();
    pendingPickMarker=null;
  }
-
- requestAnimationFrame(()=>{
-   if(preview){
-     preview.removeAttribute('src');
-     preview.style.display='none';
-   }
-   if(wrap)wrap.style.display='none';
- });
-
  toast('Picture and scan cleared.');
+}
+
+async function pasteScanImage(){
+ const status=document.getElementById('scanPasteStatus');
+ window._pastedScanFile=null;
+ if(status)status.textContent='Reading the clipboard now…';
+
+ try{
+   if(navigator.clipboard && navigator.clipboard.read){
+     const items=await navigator.clipboard.read();
+     for(const item of items){
+       const type=item.types.find(t=>t.startsWith('image/'));
+       if(!type)continue;
+       const blob=await item.getType(type);
+       const ext=(blob.type.split('/')[1]||'png').replace('jpeg','jpg');
+       const file=new File([blob],`clipboard-${Date.now()}.${ext}`,{type:blob.type});
+       showScanFile(file);
+       if(status)status.textContent='Copied photo pasted. Tap Scan Screenshot.';
+       return;
+     }
+     if(status)status.textContent='The clipboard does not currently contain a photo.';
+     return;
+   }
+   if(status)status.textContent='Safari will not expose the copied image to the button. Tap the Paste Photo Here box below and choose Paste.';
+ }catch(e){
+   if(status)status.textContent='Safari blocked direct clipboard access. Tap the Paste Photo Here box below and choose Paste.';
+ }
+}
+
+// Native paste event path. On iPhone/iPad Safari this lets the user tap the box,
+// choose Paste from the system menu, and gives us the image ClipboardEvent directly.
+const iosPasteTarget=document.getElementById('iosPasteTarget');
+if(iosPasteTarget){
+ iosPasteTarget.addEventListener('paste',e=>{
+   const items=e.clipboardData && e.clipboardData.items;
+   if(!items)return;
+   for(const item of items){
+     if(item.type && item.type.startsWith('image/')){
+       e.preventDefault();
+       const blob=item.getAsFile();
+       if(!blob)return;
+       const ext=(blob.type.split('/')[1]||'png').replace('jpeg','jpg');
+       const file=new File([blob],`ios-paste-${Date.now()}.${ext}`,{type:blob.type});
+       iosPasteTarget.innerHTML='Photo pasted ✓';
+       showScanFile(file);
+       const status=document.getElementById('scanPasteStatus');
+       if(status)status.textContent='Copied photo pasted from iOS. Tap Scan Screenshot.';
+       return;
+     }
+   }
+   const status=document.getElementById('scanPasteStatus');
+   if(status)status.textContent='What you pasted was not an image.';
+ });
 }
 
 function firstMatch(text,patterns){
@@ -1699,6 +1763,13 @@ function identifyFromScan(fields){
  <div style="margin-top:10px"><b>Math:</b> ${esc(math)}</div>
  
  </div>`;
+
+
+ // AUTO_UNKNOWN_ROUTE_v40
+ // Valid PLMN + derived eNB/gNB but no registry match => immediately open Add Unknown Scanned Tower.
+ if(!rec && fields && fields.plmn && fields.sid){
+   setTimeout(()=>prepareUnknownTowerFromScan(fields),180);
+ }
 }
 
 
@@ -1711,15 +1782,6 @@ function cancelScannedTowerPlacement(){
  if(c)c.classList.add('hidden');
  const s=document.getElementById('mapStatus');
  if(s)s.textContent='Scanned tower placement canceled.';
-
- // AUTO_UNKNOWN_ROUTE_v31:
- // If the screenshot produced a valid carrier/PLMN + derived eNB/gNB but no registry record,
- // automatically open the full Add/Edit page with the scan data prefilled.
- if(!rec && fields && fields.sid && fields.plmn){
-   setTimeout(()=>{
-     prepareUnknownTowerFromScan(fields);
-   },250);
- }
 }
 
 function prepareUnknownTowerForMap(fields){
@@ -1805,66 +1867,45 @@ function saveUnknownScannedTower(){
  const id=(document.getElementById('fId')?.value||'').trim();
  const plmn=(document.getElementById('fPlmn')?.value||'').replace(/\D/g,'');
  const carrier=(document.getElementById('fCarrier')?.value||'').trim();
+ const radio=(document.getElementById('fRadio')?.value||'LTE');
 
- if(!site){
-   alert('Enter the confirmed tower/site name before saving.');
-   document.getElementById('fSite')?.focus();
-   return;
- }
- if(!id){
-   alert('The scanned tower needs an eNB/gNB ID before it can be saved.');
-   document.getElementById('fId')?.focus();
-   return;
- }
- if(!plmn && !carrier){
-   alert('Enter the carrier or PLMN before saving.');
-   document.getElementById('fPlmn')?.focus();
-   return;
- }
+ if(!site){alert('Enter the confirmed tower/site name before saving.');document.getElementById('fSite')?.focus();return;}
+ if(!id){alert('The scanned tower needs an eNB/gNB ID before saving.');return;}
+ if(!plmn&&!carrier){alert('Enter or confirm the carrier/PLMN before saving.');return;}
 
- // Use the app's normal save path so duplicate protection and persistence remain intact.
- saveTower();
+ const duplicate=DB.records.find(r =>
+   String(r.eNB||r.gNB||'')===String(id) &&
+   String(r.radio||'')===String(radio) &&
+   ((carrier&&String(r.carrier||'')===carrier)||(plmn&&String(r.plmn||'').replace(/\D/g,'')===plmn))
+ );
+ if(duplicate){alert('That carrier + radio + tower ID is already in the registry.');return;}
 
- // Verify that the record now exists before removing the unknown workflow state.
- const radio=(document.getElementById('fRadio')?.value||'LTE').toUpperCase();
- const saved=(DB.towers||[]).find(t =>
-   String(t.id)===String(id) &&
-   String(t.radio||'').toUpperCase()===radio &&
-   (
-     (plmn && String(t.plmn||'').replace(/\D/g,'')===plmn) ||
-     (!plmn && carrier && String(t.carrier||'').toLowerCase()===carrier.toLowerCase())
-   )
+ saveRecord();
+
+ const saved=DB.records.find(r =>
+   String(r.eNB||r.gNB||'')===String(id) &&
+   String(r.radio||'')===String(radio) &&
+   ((carrier&&String(r.carrier||'')===carrier)||(plmn&&String(r.plmn||'').replace(/\D/g,'')===plmn))
  );
 
  if(saved){
-   pendingScannedTowerForMap=null;
-
    const banner=document.getElementById('unknownScanBanner');
-   if(banner){
-     banner.classList.add('hidden');
-     banner.innerHTML='';
-   }
    const actions=document.getElementById('unknownScanActions');
+   if(banner){banner.classList.add('hidden');banner.innerHTML='';}
    if(actions)actions.classList.add('hidden');
-
-   // Remove the old unknown scan result card so it no longer appears as unresolved.
-   const identity=document.getElementById('scanIdentity');
-   if(identity)identity.innerHTML='';
-
-   const results=document.getElementById('scanResults');
-   if(results)results.classList.add('hidden');
-
-   const status=document.getElementById('scanStatus');
-   if(status)status.textContent='Tower saved to the registry. It is no longer an unknown tower.';
-
-   toast('Tower saved and removed from Unknown.');
+   window._currentUnknownScanFields=null;
+   window._unknownScanFormSignature=null;
+   const identity=document.getElementById('scanIdentity'); if(identity)identity.innerHTML='';
+   document.getElementById('scanResults')?.classList.add('hidden');
    renderRegistry();
+   toast('New tower saved to registry.');
    showTab('registry',document.querySelectorAll('.tab')[2]);
  }
 }
 
 function prepareUnknownTowerFromScan(fields){
  if(!fields)return;
+ window._currentUnknownScanFields=JSON.parse(JSON.stringify(fields));
 
  // Open the full Add/Edit page automatically.
  showTab('add',document.querySelectorAll('.tab')[4]);
@@ -1911,7 +1952,7 @@ function prepareUnknownTowerFromScan(fields){
    banner.classList.remove('hidden');
    banner.innerHTML=
      `<b>Unknown tower detected.</b> The screenshot-derived values are already filled in. `+
-     `Enter the actual tower/site name, verify carrier/PLMN and radio details, add a map location if desired, then tap Save Tower.`;
+     `Enter the actual tower/site name, verify carrier/PLMN and radio details, add a map location if desired, then tap Save Tower to Registry.`;
  }
 
  const auto=document.getElementById('idAutofillStatus');
