@@ -2,15 +2,40 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Tower Registry">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
+function detectDeviceLayout(){
+ const ua=navigator.userAgent||'';
+ const platform=navigator.platform||'';
+ const touch=navigator.maxTouchPoints||0;
+ const isIOS=/iPhone|iPad|iPod/i.test(ua) || (platform==='MacIntel' && touch>1);
+ const isIPhone=/iPhone/i.test(ua) || (isIOS && Math.min(screen.width,screen.height)<500);
+ const standalone=window.matchMedia('(display-mode: standalone)').matches || navigator.standalone===true;
+
+ let label='Responsive device layout';
+ if(isIPhone){
+   // Modern Safari intentionally does not expose exact iPhone model reliably.
+   // Use viewport + safe-area behavior rather than guessing the hardware model.
+   label=standalone?'iPhone · Home Screen app layout':'iPhone · Safari layout';
+   document.documentElement.classList.add('iphone-layout');
+ }else if(isIOS){
+   label=standalone?'iPad/iOS · Home Screen app layout':'iPad/iOS · Safari layout';
+   document.documentElement.classList.add('ios-layout');
+ }
+
+ const el=document.getElementById('deviceLayoutInfo');
+ if(el)el.textContent=label+' · screen cutout/safe-area protection active';
+}
+document.addEventListener('DOMContentLoaded',detectDeviceLayout);
+window.addEventListener('orientationchange',()=>setTimeout(detectDeviceLayout,150));
+
+</script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
 <title>Master Cellular Tower Registry</title>
 <style>
@@ -51,17 +76,56 @@ button.good{background:#166534}
 
 #towerMap{height:58vh;min-height:420px;border-radius:16px;border:1px solid #39435f;overflow:hidden}
 .mapHint{margin-top:8px}
+
+/* v28: iPhone / Dynamic Island / safe-area support */
+:root{
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
+body{
+  padding-top: var(--safe-top);
+  padding-right: var(--safe-right);
+  padding-bottom: var(--safe-bottom);
+  padding-left: var(--safe-left);
+}
+header, .topbar, nav{
+  padding-left: max(12px, var(--safe-left));
+  padding-right: max(12px, var(--safe-right));
+}
+main, .container, .content{
+  padding-left: max(12px, var(--safe-left));
+  padding-right: max(12px, var(--safe-right));
+}
+@media (max-width: 500px){
+  body{font-size:16px;}
+  input, select, textarea, button{font-size:16px; max-width:100%;}
+  .grid{grid-template-columns:1fr !important;}
+  .row{flex-wrap:wrap;}
+  h1{font-size:1.35rem; line-height:1.25;}
+  h2{font-size:1.2rem;}
+  .tab{min-height:44px;}
+}
+@media (orientation: landscape){
+  body{
+    padding-left: max(16px, var(--safe-left));
+    padding-right: max(16px, var(--safe-right));
+  }
+}
+
 </style>
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
 </head>
 <body>
 
 <div id="appLock">
   <div id="lockCard">
     <h2>Master Tower Registry</h2>
-    <p class="muted small" id="lockExplain">Enter the app PIN to open the registry.</p>
+    <p class="muted small" id="lockExplain">Enter the PIN once to trust this device.</p>
     <input id="lockPin" type="password" inputmode="numeric" autocomplete="off" placeholder="Enter PIN">
     
-    <button id="lockBtn" style="margin-top:10px">Unlock</button>
+    <button id="lockBtn" style="margin-top:10px">Trust This Device</button>
     
     <div id="lockMsg" class="small muted"></div>
   </div>
@@ -69,6 +133,7 @@ button.good{background:#166534}
 
 <div class="wrap">
 <h1>Master Cellular Tower Registry</h1>
+<div id="deviceLayoutInfo" class="small muted" style="margin-top:4px"></div>
 <div class="muted">Editable offline tower registry with LTE/5G identifier math.</div>
 
 <div class="tabs">
@@ -78,6 +143,16 @@ button.good{background:#166534}
 <button class="tab" onclick="showTab('map',this)">Map</button>
 <button class="tab" onclick="showTab('add',this)">Add/Edit</button>
 <button class="tab" onclick="showTab('backup',this)">Backup</button>
+</div>
+<div id="pendingChangesBar" class="card hidden" style="position:sticky;top:58px;z-index:8;border-color:#7c5f16">
+  <div class="row" style="align-items:center">
+    <div style="flex:2">
+      <b>Pending changes:</b> <span id="pendingChangesCount">0</span>
+      <div class="small muted">Changes to existing towers are only previews until you save them.</div>
+    </div>
+    <button class="good" onclick="saveAllPendingChanges()">Save All Changes</button>
+    <button class="secondary" onclick="discardAllPendingChanges()">Discard All</button>
+  </div>
 </div>
 
 <section id="tab-lookup">
@@ -122,6 +197,11 @@ button.good{background:#166534}
 <div>
 <label>Screenshot</label>
 <input id="scanImage" type="file" accept="image/*">
+<div class="row" style="margin-top:10px">
+<button type="button" class="secondary" onclick="pasteScanImage()">Paste Photo</button>
+<button type="button" class="danger" onclick="clearScanPage()">✕ Clear Scan</button>
+</div>
+<div id="scanPasteStatus" class="small muted" style="margin-top:8px"></div>
 </div>
 
 <div id="scanPreviewWrap" class="hidden" style="margin-top:12px">
@@ -177,13 +257,16 @@ button.good{background:#166534}
 </div>
 <div id="towerMap" style="margin-top:12px"></div>
 <div id="mapStatus" class="small muted mapHint"></div>
+<div id="scanMapPlacementControls" class="hidden" style="margin-top:8px">
+<button class="danger" onclick="cancelScannedTowerPlacement()">Cancel Scanned Tower Placement</button>
+</div>
 
 <div class="card" style="margin-top:14px">
-<h3>Update Tower Location</h3>
+<h3>Set / Move Tower Location by eNB/gNB</h3>
 <p class="muted small">Enter an eNB or gNB, then paste coordinates such as <b>40.455500, -109.528700</b>. The matching tower will be updated without opening Add/Edit.</p>
 <div class="grid">
 <div>
-<label>eNB / gNB</label>
+<label>Existing Tower eNB / gNB</label>
 <input id="mapUpdateId" inputmode="numeric" placeholder="1070">
 </div>
 <div>
@@ -192,10 +275,11 @@ button.good{background:#166534}
 </div>
 </div>
 <div style="margin-top:10px">
-<button onclick="updateTowerLocationById()">Update Location</button>
+<button onclick="setTowerLocationById()">Set / Move Tower Location</button>
 <button class="secondary" style="margin-top:8px" onclick="pasteMapLocationFromClipboard()">Paste From Clipboard</button>
 </div>
 <div id="mapUpdateStatus" class="small muted" style="margin-top:8px"></div>
+<div class="small muted" style="margin-top:6px">This tool previews a new tower location first. Nothing changes permanently until you tap Save Location.</div>
 </div>
 
 <div class="card" style="margin-top:14px">
@@ -211,6 +295,10 @@ button.good{background:#166534}
 </div>
 </div>
 <div id="mapEditStatus" class="small muted" style="margin-top:8px"></div>
+<div id="pendingLocationActions" class="hidden" style="margin-top:10px">
+<button class="good" onclick="savePendingTowerLocation()">Save Location</button>
+<button class="secondary" onclick="cancelPendingTowerLocation()">Cancel</button>
+</div>
 </div>
 
 
@@ -219,7 +307,11 @@ button.good{background:#166534}
 
 <section id="tab-add" class="hidden">
 <div class="card">
-<h3 id="formTitle">Add Tower</h3><p class="muted small">Type an existing eNB/gNB and the app will autofill all saved details. If a scan or lookup finds an unknown ID, the app can open this form with everything it already knows prefilled. Future carriers are also supported.</p>
+<h3 id="formTitle">Add Tower</h3>
+<div id="unknownScanBanner" class="notice hidden" style="margin-bottom:10px"></div>
+<div id="unknownScanActions" class="hidden" style="margin-bottom:12px">
+  <button id="saveUnknownScanBtn" type="button" onclick="saveUnknownScannedTower()">Save Tower to Registry</button>
+</div><p class="muted small">Type an existing eNB/gNB and the app will autofill all saved details. If a scan or lookup finds an unknown ID, the app can open this form with everything it already knows prefilled. Future carriers are also supported.</p>
 <input type="hidden" id="editKey">
 <div class="grid">
 <div><label>Carrier</label><input id="fCarrier" list="carrierList" placeholder="Carrier name" oninput="syncPlmn();autofillTowerById()"></div>
@@ -243,6 +335,7 @@ button.good{background:#166534}
 <div class="row" style="margin-top:10px">
 <button type="button" class="secondary" onclick="useCurrentLocationForForm()">Use My Current Location</button>
 <button type="button" class="secondary" onclick="pickLocationOnMap()">Pick Location on Map</button>
+<button type="button" class="secondary" onclick="pickLocationOnMap()">Place Current Tower on Map</button>
 </div>
 <div id="locationFormStatus" class="small muted" style="margin-top:8px"></div>
 
@@ -267,9 +360,10 @@ button.good{background:#166534}
 <input id="importFile" type="file" accept=".json,application/json" class="hidden" onchange="importRegistry(event)">
 </div>
 <div style="margin-top:10px"><button class="danger" onclick="resetRegistry()">Reset to Built-in Registry</button></div>
+<div style="margin-top:10px"><button class="secondary" onclick="forgetTrustedDevice()">Require PIN Again on This Device</button></div>
 
 </div>
-<div class="notice small" style="margin-top:12px"><b>PIN note:</b> This app requires PIN 159357 each new browser session. This is still an app-level lock only; GitHub Pages is static hosting and does not provide true server-side protection for the hosted files.</div>
+<div class="notice small" style="margin-top:12px"><b>PIN note:</b> This app requires PIN 159357 only the first time on each device/browser. After successful entry, that device is trusted in local storage until its site data is cleared or trust is manually revoked. This is still an app-level lock only; GitHub Pages is static hosting.</div>
 </section>
 </div>
 <datalist id="carrierList"></datalist>
@@ -293,366 +387,112 @@ function loadLocal(){const x=localStorage.getItem('masterTowerRegistry'); if(x){
 
 
 
+
 const FIXED_APP_PIN='159357';
+const DEVICE_TRUST_KEY='towerRegistryDeviceTrusted_v30';
 
 function showAppLock(){
  const lock=document.getElementById('appLock');
  if(!lock)return;
  lock.style.display='flex';
+
  const pin=document.getElementById('lockPin');
- if(pin){pin.value='';setTimeout(()=>pin.focus(),100);}
+ if(pin){
+   pin.value='';
+   setTimeout(()=>pin.focus(),100);
+ }
+
  const msg=document.getElementById('lockMsg');
  if(msg)msg.textContent='';
+
+ const explain=document.getElementById('lockExplain');
+ if(explain){
+   explain.textContent='Enter the PIN once to trust this device. After that, this device will open the registry automatically.';
+ }
 }
 
 function unlockApp(){
  const pin=document.getElementById('lockPin').value.trim();
  const msg=document.getElementById('lockMsg');
+
  if(pin===FIXED_APP_PIN){
-   sessionStorage.setItem('towerRegistryUnlocked','1');
+   localStorage.setItem(DEVICE_TRUST_KEY,'1');
    document.getElementById('appLock').style.display='none';
    if(msg)msg.textContent='';
+   toast('This device is now trusted.');
  }else{
    if(msg)msg.textContent='Incorrect PIN.';
  }
 }
 
-
-document.addEventListener('DOMContentLoaded',()=>{
- const mi=document.getElementById('mapUpdateId');
- const mc=document.getElementById('mapUpdateCoords');
- if(mi)mi.addEventListener('keydown',e=>{if(e.key==='Enter')updateTowerLocationById();});
- if(mc)mc.addEventListener('keydown',e=>{if(e.key==='Enter')updateTowerLocationById();});
-});
+function forgetTrustedDevice(){
+ if(confirm('Require the PIN again on this device?')){
+   localStorage.removeItem(DEVICE_TRUST_KEY);
+   showAppLock();
+ }
+}
 
 document.addEventListener('DOMContentLoaded',()=>{
  const btn=document.getElementById('lockBtn');
  const pin=document.getElementById('lockPin');
+
  if(btn)btn.addEventListener('click',unlockApp);
  if(pin)pin.addEventListener('keydown',e=>{if(e.key==='Enter')unlockApp();});
- if(sessionStorage.getItem('towerRegistryUnlocked')==='1'){
-   document.getElementById('appLock').style.display='none';
+
+ if(localStorage.getItem(DEVICE_TRUST_KEY)==='1'){
+   const lock=document.getElementById('appLock');
+   if(lock)lock.style.display='none';
  }else{
    showAppLock();
  }
 });
 
 
-function getCarrierNames(){
- if(!DB)return [];
- return [...new Set([
-   ...Object.values(DB.plmns||{}),
-   ...DB.records.map(r=>r.carrier).filter(Boolean)
- ])].sort((a,b)=>a.localeCompare(b));
-}
-
-function refreshCarrierList(){
- const dl=document.getElementById('carrierList');
- if(!dl)return;
- dl.innerHTML=getCarrierNames().map(c=>`<option value="${esc(c)}"></option>`).join('');
-}
-
-function carrierPlmns(carrier){
- if(!DB)return [];
- const vals=[];
- for(const [plmn,name] of Object.entries(DB.plmns||{})){
-   if(name===carrier)vals.push(plmn);
- }
- return vals;
-}
-
-function recordPlmn(r){
- return r.plmn || carrierPlmns(r.carrier)[0] || '';
-}
-
-function recordCard(r, extra=''){
- const cls=r.status==='confirmed'?'ok':r.status==='provisional'?'prov':'unknown';
- const idLabel=r.radio==='LTE'?'eNB':'gNB';
- const idValue=r.eNB||r.gNB||'Unknown';
- return `<div class="card result ${cls}">
-   <h2>${esc(r.site)}</h2>
-   <div class="kv">
-     <div class="label">Carrier</div><div>${esc(r.carrier||'Unknown')}</div>
-     <div class="label">PLMN</div><div>${esc(recordPlmn(r)||'Unknown')}</div>
-     <div class="label">LTE/5G</div><div>${esc(r.radio||'Unknown')}</div>
-     <div class="label">${idLabel}</div><div>${esc(idValue)}</div>
-     <div class="label">Bands</div><div>${esc(r.bands||'Unknown')}</div>
-     <div class="label">Bandwidth</div><div>${esc(r.bandwidth||'Unknown')}</div>
-     <div class="label">Status</div><div>${esc(r.status||'confirmed')}</div>
-   </div>
-   ${extra}
-   ${r.notes?'<div class="small muted" style="margin-top:8px">'+esc(r.notes)+'</div>':''}
- </div>`;
-}
-
-function universalLookup(){
- if(!DB)return;
- const raw=document.getElementById('universalSearch').value.trim();
- const q=raw.toLowerCase();
- const radioFilter=document.getElementById('searchRadio').value;
- const carrierFilter=document.getElementById('searchCarrier').value.trim().toLowerCase();
- const out=document.getElementById('universalLookupOut');
- const summary=document.getElementById('universalSearchSummary');
-
- let matches=[];
- let mathCards=[];
-
- // Direct text/ID/carrier/site/PLMN/band search.
- for(const r of DB.records){
-   if(radioFilter && r.radio!==radioFilter)continue;
-   if(carrierFilter && !String(r.carrier||'').toLowerCase().includes(carrierFilter))continue;
-
-   const hay=[
-     r.site,r.carrier,r.radio,r.eNB,r.gNB,r.bands,r.bandwidth,r.status,r.notes,
-     recordPlmn(r),r.cell_id,r.local_cell,r.pci,r.tac
-   ].map(x=>String(x||'').toLowerCase()).join(' | ');
-
-   if(!q || hay.includes(q))matches.push(r);
- }
-
- // If query is numeric, also interpret it as Cell ID/NCI and derive LTE + 5G IDs.
- if(/^\d+$/.test(raw)){
-   try{
-     const n=BigInt(raw);
-
-     const enb=(n/256n).toString();
-     const sector=(n%256n).toString();
-     const lteMatches=DB.records.filter(r =>
-       r.radio==='LTE' &&
-       String(r.eNB||'')===enb &&
-       (!carrierFilter || String(r.carrier||'').toLowerCase().includes(carrierFilter)) &&
-       (!radioFilter || radioFilter==='LTE')
-     );
-     for(const r of lteMatches){
-       if(!matches.includes(r))matches.push(r);
-       mathCards.push({r, extra:
-         `<div style="margin-top:10px"><b>Cell ID math:</b> ${esc(raw)} // 256 = eNB ${esc(enb)}, sector ${esc(sector)}. Reverse: ${esc(enb)} × 256 + ${esc(sector)} = ${esc((BigInt(enb)*256n+BigInt(sector)).toString())} ✅</div>`
-       });
-     }
-
-     const gnb=(n/4096n).toString();
-     const local=(n%4096n).toString();
-     const nrMatches=DB.records.filter(r =>
-       r.radio==='5G' &&
-       String(r.gNB||'')===gnb &&
-       (!carrierFilter || String(r.carrier||'').toLowerCase().includes(carrierFilter)) &&
-       (!radioFilter || radioFilter==='5G')
-     );
-     for(const r of nrMatches){
-       if(!matches.includes(r))matches.push(r);
-       mathCards.push({r, extra:
-         `<div style="margin-top:10px"><b>NCI math ?:</b> ${esc(raw)} // 4096 = gNB ${esc(gnb)} ?, local ${esc(local)} ?. Reverse: ${esc(gnb)} × 4096 + ${esc(local)} = ${esc((BigInt(gnb)*4096n+BigInt(local)).toString())} ✅</div>`
-       });
-     }
-   }catch(e){}
- }
-
- // De-duplicate by carrier+radio+ID.
- const seen=new Set();
- matches=matches.filter(r=>{
-   const k=keyOf(r);
-   if(seen.has(k))return false;
-   seen.add(k);return true;
- });
-
- matches.sort((a,b)=>
-   String(a.carrier||'').localeCompare(String(b.carrier||'')) ||
-   String(a.site||'').localeCompare(String(b.site||'')) ||
-   String(a.radio||'').localeCompare(String(b.radio||''))
- );
-
- summary.textContent=`${matches.length} matching registry record${matches.length===1?'':'s'}.`;
-
- if(!matches.length){
-   if(/^\d+$/.test(raw)){
-     try{
-       const n=BigInt(raw);
-       const enb=(n/256n).toString(), sector=(n%256n).toString();
-       const gnb=(n/4096n).toString(), local=(n%4096n).toString();
-       out.innerHTML=`<div class="card result unknown">
-         <h2>UNMAPPED / UNKNOWN ?</h2>
-         <div class="small">No registry record matched that number directly or through identifier math.</div>
-         <div style="margin-top:8px"><b>LTE interpretation:</b> eNB ${esc(enb)}, sector ${esc(sector)}</div>
-         <div style="margin-top:5px"><b>5G interpretation ?:</b> gNB ${esc(gnb)} ?, local ${esc(local)} ?</div>
-         <div class="row" style="margin-top:12px">
-           <button class="good" onclick="prepareUnknownFromLookup('${esc(raw)}','LTE','${esc(enb)}','${esc(sector)}')">Add as LTE Tower</button>
-           <button class="good" onclick="prepareUnknownFromLookup('${esc(raw)}','5G','${esc(gnb)}','${esc(local)}')">Add as 5G Tower</button>
-         </div>
-       </div>`;
-     }catch(e){out.innerHTML='<div class="notice">No matching records.</div>';}
-   }else{
-     out.innerHTML='<div class="notice">No matching records.</div>';
-   }
-   return;
- }
-
- out.innerHTML=matches.map(r=>{
-   const m=mathCards.find(x=>x.r===r);
-   return recordCard(r,m?m.extra:'');
- }).join('');
-}
-
-
-function prepareUnknownFromLookup(raw,radio,id,local){
- showTab('add',document.querySelectorAll('.tab')[4]);
- clearForm();
-
- document.getElementById('fRadio').value=radio;
- updateIdLabel();
- document.getElementById('fId').value=id||'';
- document.getElementById('fCell').value=raw||'';
- document.getElementById('fLocal').value=local||'';
- document.getElementById('fStatus').value='unknown';
- document.getElementById('fSite').value='';
- document.getElementById('formTitle').textContent='Add Unknown Tower';
- document.getElementById('idAutofillStatus').textContent='This identifier is not in the registry yet. Enter carrier, PLMN, tower/site name, bands and any other details you know, then save.';
- document.getElementById('duplicateWarn').innerHTML='<div class="notice"><b>New registry ID.</b> Review the derived ID math before saving.</div>';
- if(raw)calcFormIds();
- setTimeout(()=>document.getElementById('fCarrier').focus(),150);
-}
-
-function clearUniversalSearch(){
- document.getElementById('universalSearch').value='';
- document.getElementById('searchRadio').value='';
- document.getElementById('searchCarrier').value='';
- document.getElementById('universalLookupOut').innerHTML='';
- document.getElementById('universalSearchSummary').textContent='';
-}
-
-document.addEventListener('DOMContentLoaded',()=>{
- const q=document.getElementById('universalSearch');
- const cf=document.getElementById('searchCarrier');
- const rf=document.getElementById('searchRadio');
- if(q)q.addEventListener('keydown',e=>{if(e.key==='Enter')universalLookup();});
- if(cf)cf.addEventListener('keydown',e=>{if(e.key==='Enter')universalLookup();});
- if(rf)rf.addEventListener('change',()=>{if(q && q.value.trim())universalLookup();});
-});
-
-
 let towerMap=null;
 let towerMarkers=[];
-let locationPickMode=false;
-let pendingPickMarker=null;
 let activeMapEditRecord=null;
 let activeMapEditMarker=null;
+let pendingScannedTowerForMap=null;
+let pendingPickMarker=null;
+let locationPickMode=false;
+let pendingTowerLocationChange=null;
+let streetLayer=null;
+let satelliteLayer=null;
 
 function validCoord(v,min,max){
  const n=Number(v);
  return Number.isFinite(n)&&n>=min&&n<=max;
 }
 
-let streetLayer=null;
-let satelliteLayer=null;
-
-function ensureTowerMap(){
- if(towerMap || !window.L)return;
-
- towerMap=L.map('towerMap').setView([40.3,-109.5],8);
-
- streetLayer=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-   maxZoom:19,
-   attribution:'&copy; OpenStreetMap contributors'
- });
-
- // Esri World Imagery satellite/aerial basemap.
- satelliteLayer=L.tileLayer(
-   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-   {
-     maxZoom:19,
-     attribution:'Tiles &copy; Esri'
-   }
- );
-
- streetLayer.addTo(towerMap);
-
- L.control.layers(
-   {
-     'Street Map':streetLayer,
-     'Satellite':satelliteLayer
-   },
-   null,
-   {collapsed:false}
- ).addTo(towerMap);
-
- towerMap.on('click',e=>{
-   if(activeMapEditRecord){
-     saveMapEditedLocation(activeMapEditRecord,e.latlng.lat,e.latlng.lng,true);
-     return;
-   }
-   if(!locationPickMode)return;
-   document.getElementById('fLat').value=e.latlng.lat.toFixed(6);
-   document.getElementById('fLon').value=e.latlng.lng.toFixed(6);
-   if(pendingPickMarker)pendingPickMarker.remove();
-   pendingPickMarker=L.marker(e.latlng).addTo(towerMap).bindPopup('New tower location').openPopup();
-   document.getElementById('locationFormStatus').textContent=`Selected ${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}. Save the tower to keep it.`;
-   locationPickMode=false;
- });
- renderTowerMap();
-}
-function renderTowerMap(){
- if(!towerMap||!DB)return;
- towerMarkers.forEach(m=>m.remove());
- towerMarkers=[];
- activeMapEditMarker=null;
-
- for(const r of DB.records){
-   const lat=Number(r.latitude),lon=Number(r.longitude);
-   if(!validCoord(lat,-90,90)||!validCoord(lon,-180,180))continue;
-
-   const isEditing=activeMapEditRecord && keyOf(activeMapEditRecord)===keyOf(r);
-   const m=L.marker([lat,lon],{draggable:!!isEditing}).addTo(towerMap);
-
-   m.bindPopup(`<b>${esc(r.site)}</b><br>${esc(r.carrier)} · ${esc(r.radio)}<br>${r.eNB?'eNB '+esc(r.eNB):'gNB '+esc(r.gNB)}<br>${esc(r.bands||'bands unknown')}${isEditing?'<br><b>Drag this pin to move tower</b>':''}`);
-
-   if(isEditing){
-     activeMapEditMarker=m;
-     m.on('dragend',ev=>{
-       const ll=ev.target.getLatLng();
-       saveMapEditedLocation(r,ll.lat,ll.lng,false);
-     });
-     m.openPopup();
-   }
-
-   towerMarkers.push(m);
- }
- document.getElementById('mapStatus').textContent=`${towerMarkers.length} saved tower location${towerMarkers.length===1?'':'s'} shown.`;
-}
-
-
 function parseMapsLocation(raw){
  let s=String(raw||'').trim();
  if(!s)return null;
  try{s=decodeURIComponent(s);}catch(e){}
 
- // Apple Maps: ?ll=lat,lon / ?sll=lat,lon / ?center=lat,lon
  let m=s.match(/[?&](?:ll|sll|center)=(-?\d{1,3}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)/i);
  if(m){
    const lat=Number(m[1]),lon=Number(m[2]);
    if(validCoord(lat,-90,90)&&validCoord(lon,-180,180))return {lat,lon};
  }
 
- // Apple Maps / Google Maps query parameters containing coordinates.
  m=s.match(/[?&](?:q|query|destination|daddr)=(-?\d{1,3}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)/i);
  if(m){
    const lat=Number(m[1]),lon=Number(m[2]);
    if(validCoord(lat,-90,90)&&validCoord(lon,-180,180))return {lat,lon};
  }
 
- // Google Maps: /@lat,lon,zoom
  m=s.match(/@(-?\d{1,3}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)(?:,|$)/);
  if(m){
    const lat=Number(m[1]),lon=Number(m[2]);
    if(validCoord(lat,-90,90)&&validCoord(lon,-180,180))return {lat,lon};
  }
 
- // Google place links: !3dLAT!4dLON
  m=s.match(/!3d(-?\d{1,3}(?:\.\d+)?)!4d(-?\d{1,3}(?:\.\d+)?)/i);
  if(m){
    const lat=Number(m[1]),lon=Number(m[2]);
    if(validCoord(lat,-90,90)&&validCoord(lon,-180,180))return {lat,lon};
  }
 
- // Plain copied coordinates or share text.
  const nums=s.replace(/[°º]/g,' ').replace(/[()]/g,' ').match(/-?\d{1,3}(?:\.\d+)?/g);
  if(nums&&nums.length>=2){
    for(let i=0;i<nums.length-1;i++){
@@ -663,14 +503,166 @@ function parseMapsLocation(raw){
  return null;
 }
 
-function updateTowerLocationById(){
+function ensureTowerMap(){
+ if(towerMap || !window.L)return;
+ towerMap=L.map('towerMap').setView([40.3,-109.5],8);
+
+ streetLayer=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+   maxZoom:19, attribution:'&copy; OpenStreetMap contributors'
+ });
+ satelliteLayer=L.tileLayer(
+   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+   {maxZoom:19, attribution:'Tiles &copy; Esri'}
+ );
+ streetLayer.addTo(towerMap);
+ L.control.layers({'Street Map':streetLayer,'Satellite':satelliteLayer},null,{collapsed:false}).addTo(towerMap);
+
+ towerMap.on('click',e=>{
+   if(pendingScannedTowerForMap && typeof finishScannedTowerMapPlacement==='function'){
+     finishScannedTowerMapPlacement(e.latlng.lat,e.latlng.lng);
+     return;
+   }
+   if(activeMapEditRecord){
+     saveMapEditedLocation(activeMapEditRecord,e.latlng.lat,e.latlng.lng,true);
+     return;
+   }
+   if(locationPickMode){
+     const lat=e.latlng.lat.toFixed(6),lon=e.latlng.lng.toFixed(6);
+     const fLat=document.getElementById('fLat'),fLon=document.getElementById('fLon');
+     if(fLat)fLat.value=lat;
+     if(fLon)fLon.value=lon;
+     locationPickMode=false;
+     const msg=document.getElementById('locationFormStatus');
+     if(msg)msg.textContent=`Selected ${lat}, ${lon}. Save the tower to keep it.`;
+   }
+ });
+ renderTowerMap();
+}
+
+function renderTowerMap(){
+ if(!towerMap||!DB)return;
+ towerMarkers.forEach(m=>m.remove());
+ towerMarkers=[];
+ activeMapEditMarker=null;
+
+ for(const r of DB.records){
+   const er=getEffectiveRecord(r); const lat=Number(er.latitude),lon=Number(er.longitude);
+   if(!validCoord(lat,-90,90)||!validCoord(lon,-180,180))continue;
+
+   const editing=activeMapEditRecord && keyOf(activeMapEditRecord)===keyOf(r);
+   const marker=L.marker([lat,lon],{draggable:!!editing}).addTo(towerMap);
+   marker.bindPopup(
+     `<b>${esc(r.site)}</b><br>${esc(r.carrier)} · ${esc(r.radio)}<br>`+
+     `${r.eNB?'eNB '+esc(r.eNB):'gNB '+esc(r.gNB)}<br>${esc(er.bands||r.bands||'bands unknown')}`+
+     `${editing?'<br><b>Drag this pin to move tower</b>':''}`
+   );
+
+   if(editing){
+     activeMapEditMarker=marker;
+     marker.on('dragend',ev=>{
+       const ll=ev.target.getLatLng();
+       saveMapEditedLocation(r,ll.lat,ll.lng,false);
+     });
+     marker.openPopup();
+   }
+   towerMarkers.push(marker);
+ }
+
+ const status=document.getElementById('mapStatus');
+ if(status)status.textContent=`${towerMarkers.length} saved tower location${towerMarkers.length===1?'':'s'} shown.`;
+}
+
+
+function stageTowerLocationChange(record,lat,lon,source){
+ if(!record)return;
+ pendingTowerLocationChange={
+   record:record,
+   lat:Number(lat),
+   lon:Number(lon),
+   source:source||'map'
+ };
+
+ ensureTowerMap();
+ renderTowerMap();
+
+ // Show a temporary preview marker without saving the record.
+ if(activeMapEditMarker){
+   activeMapEditMarker.setLatLng([Number(lat),Number(lon)]);
+ }else{
+   activeMapEditMarker=L.marker([Number(lat),Number(lon)],{draggable:true}).addTo(towerMap);
+   activeMapEditMarker.on('dragend',ev=>{
+     const ll=ev.target.getLatLng();
+     stageTowerLocationChange(record,ll.lat,ll.lng,'drag');
+   });
+   towerMarkers.push(activeMapEditMarker);
+ }
+
+ towerMap.setView([Number(lat),Number(lon)],16);
+
+ const actions=document.getElementById('pendingLocationActions');
+ if(actions)actions.classList.remove('hidden');
+
+ const status=document.getElementById('mapEditStatus') || document.getElementById('mapUpdateStatus');
+ if(status){
+   status.innerHTML=`Preview: <b>${esc(record.site)}</b> → ${Number(lat).toFixed(6)}, ${Number(lon).toFixed(6)}. Tap <b>Save Location</b> to keep it, or Cancel to restore the old location.`;
+ }
+}
+
+function savePendingTowerLocation(){
+ const p=pendingTowerLocationChange;
+ if(!p)return;
+
+ stageExistingTowerChange(
+   p.record,
+   {latitude:p.lat.toFixed(6),longitude:p.lon.toFixed(6)},
+   'Map location change'
+ );
+
+ pendingTowerLocationChange=null;
+ const actions=document.getElementById('pendingLocationActions');
+ if(actions)actions.classList.add('hidden');
+
+ if(towerMap){
+   renderTowerMap();
+   towerMap.setView([p.lat,p.lon],16);
+ }
+
+ const status=document.getElementById('mapEditStatus') || document.getElementById('mapUpdateStatus');
+ if(status){
+   status.innerHTML=`Pending: <b>${esc(p.record.site)}</b> → ${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}. Tap <b>Save All Changes</b> to commit it.`;
+ }
+ toast('Location added to pending changes.');
+}
+
+function cancelPendingTowerLocation(){
+ const p=pendingTowerLocationChange;
+ pendingTowerLocationChange=null;
+
+ const actions=document.getElementById('pendingLocationActions');
+ if(actions)actions.classList.add('hidden');
+
+ if(towerMap)renderTowerMap();
+
+ if(p){
+   const oldLat=Number(p.record.latitude),oldLon=Number(p.record.longitude);
+   if(validCoord(oldLat,-90,90)&&validCoord(oldLon,-180,180)){
+     towerMap.setView([oldLat,oldLon],16);
+   }
+ }
+
+ const status=document.getElementById('mapEditStatus') || document.getElementById('mapUpdateStatus');
+ if(status)status.textContent='Location change canceled. Nothing was saved.';
+ toast('Location change canceled.');
+}
+
+
+function setTowerLocationById(){
  if(!DB)return;
  const id=document.getElementById('mapUpdateId').value.trim().replace(/[^\d]/g,'');
  const raw=document.getElementById('mapUpdateCoords').value.trim();
  const status=document.getElementById('mapUpdateStatus');
 
  if(!id){status.textContent='Enter an eNB or gNB.';return;}
-
  const coords=parseMapsLocation(raw);
  if(!coords){
    status.textContent='Paste decimal coordinates or an Apple Maps / Google Maps link containing coordinates.';
@@ -679,109 +671,65 @@ function updateTowerLocationById(){
 
  const matches=DB.records.filter(r=>String(r.eNB||r.gNB||'')===id);
  if(!matches.length){
-   status.innerHTML=`No tower with eNB/gNB <b>${esc(id)}</b> is in the registry.`;
+   status.innerHTML=`No tower with eNB/gNB <b>${esc(id)}</b> is in the registry yet.`;
    return;
  }
-
  if(matches.length>1){
-   const options=matches.map((r,i)=>`${i+1}. ${r.carrier} · ${r.radio} · ${r.site}`).join(' | ');
-   status.innerHTML=`More than one tower uses ID <b>${esc(id)}</b>: ${esc(options)}. Open Add/Edit and choose the exact record first.`;
+   const opts=matches.map((r,i)=>`${i+1}. ${r.carrier} · ${r.radio} · ${r.site}`).join(' | ');
+   status.innerHTML=`More than one tower uses ID <b>${esc(id)}</b>: ${esc(opts)}. Use Add/Edit to choose the exact record first.`;
    return;
  }
 
  const r=matches[0];
- r.latitude=coords.lat.toFixed(6);
- r.longitude=coords.lon.toFixed(6);
+ activeMapEditRecord=r;
+ stageTowerLocationChange(r,coords.lat,coords.lon,'coordinates');
 
- saveLocal();
- renderRegistry();
- if(towerMap){
-   renderTowerMap();
-   towerMap.setView([coords.lat,coords.lon],16);
- }
-
- status.innerHTML=`🌐 Updated <b>${esc(r.site)}</b> to ${coords.lat.toFixed(6)}, ${coords.lon.toFixed(6)}.`;
- toast('Tower location updated.');
+ status.innerHTML=
+   `Previewing <b>${esc(r.site)}</b> at ${coords.lat.toFixed(6)}, ${coords.lon.toFixed(6)}. `+
+   `Tap <b>Save Location</b> below to commit the move.`;
 }
-
-async function pasteMapLocationFromClipboard(){
- const status=document.getElementById('mapUpdateStatus');
- try{
-   const text=await navigator.clipboard.readText();
-   document.getElementById('mapUpdateCoords').value=text;
-   const coords=parseMapsLocation(text);
-   if(coords){
-     status.textContent=`Found ${coords.lat.toFixed(6)}, ${coords.lon.toFixed(6)}. Tap Update Location to save.`;
-   }else{
-     status.textContent='Clipboard did not contain recognizable Apple Maps, Google Maps, or decimal coordinates.';
-   }
- }catch(e){
-   status.textContent='Safari did not allow clipboard access. Paste the Maps link manually.';
- }
-}
-
 
 function selectTowerForMapEdit(){
  if(!DB)return;
  const id=document.getElementById('mapEditId').value.trim().replace(/[^\d]/g,'');
  const status=document.getElementById('mapEditStatus');
-
- if(!id){
-   status.textContent='Enter an eNB or gNB.';
-   return;
- }
+ if(!id){status.textContent='Enter an eNB or gNB.';return;}
 
  const matches=DB.records.filter(r=>String(r.eNB||r.gNB||'')===id);
  if(!matches.length){
    status.innerHTML=`No tower with eNB/gNB <b>${esc(id)}</b> is in the registry.`;
-   activeMapEditRecord=null;
-   renderTowerMap();
    return;
  }
-
  if(matches.length>1){
-   const options=matches.map((r,i)=>`${i+1}. ${r.carrier} · ${r.radio} · ${r.site}`).join(' | ');
-   status.innerHTML=`More than one tower uses ID <b>${esc(id)}</b>: ${esc(options)}. Open Add/Edit and choose the exact record before map editing.`;
-   activeMapEditRecord=null;
-   renderTowerMap();
+   const opts=matches.map((r,i)=>`${i+1}. ${r.carrier} · ${r.radio} · ${r.site}`).join(' | ');
+   status.innerHTML=`More than one tower uses ID <b>${esc(id)}</b>: ${esc(opts)}. Use Add/Edit to choose the exact record first.`;
    return;
  }
 
  activeMapEditRecord=matches[0];
  ensureTowerMap();
+ renderTowerMap();
 
  const lat=Number(activeMapEditRecord.latitude),lon=Number(activeMapEditRecord.longitude);
  if(validCoord(lat,-90,90)&&validCoord(lon,-180,180)){
    towerMap.setView([lat,lon],16);
-   renderTowerMap();
-   status.innerHTML=`Editing <b>${esc(activeMapEditRecord.site)}</b>. Drag its pin or tap a new location on the map.`;
+   status.innerHTML=`Editing <b>${esc(activeMapEditRecord.site)}</b>. Drag its pin or tap a new location.`;
  }else{
-   renderTowerMap();
-   status.innerHTML=`Editing <b>${esc(activeMapEditRecord.site)}</b>. It has no saved location yet. Tap the map where the tower should go.`;
+   status.innerHTML=`Editing <b>${esc(activeMapEditRecord.site)}</b>. Tap the map to place it.`;
  }
 }
 
-function saveMapEditedLocation(record,lat,lon,fromMapTap){
+function saveMapEditedLocation(record,lat,lon,fromTap){
  if(!record)return;
- record.latitude=Number(lat).toFixed(6);
- record.longitude=Number(lon).toFixed(6);
-
- saveLocal();
- renderRegistry();
-
- if(towerMap){
-   renderTowerMap();
-   towerMap.setView([Number(lat),Number(lon)],16);
- }
-
+ stageTowerLocationChange(record,lat,lon,fromTap?'tap':'drag');
  const status=document.getElementById('mapEditStatus');
  if(status){
-   status.innerHTML=`🌐 Updated <b>${esc(record.site)}</b> to ${Number(lat).toFixed(6)}, ${Number(lon).toFixed(6)}${fromMapTap?' from map tap':' by dragging the pin'}.`;
+   status.innerHTML=`Previewing <b>${esc(record.site)}</b> at ${Number(lat).toFixed(6)}, ${Number(lon).toFixed(6)}. `+
+     `Tap <b>Save Location</b> to commit it, or Cancel to restore the previous location.`;
  }
- toast('Tower location updated.');
 }
-
 function stopTowerMapEdit(){
+ if(pendingTowerLocationChange)cancelPendingTowerLocation();
  activeMapEditRecord=null;
  activeMapEditMarker=null;
  if(towerMap)renderTowerMap();
@@ -795,68 +743,156 @@ function fitTowerMap(){
  if(towerMarkers.length){
    const group=L.featureGroup(towerMarkers);
    towerMap.fitBounds(group.getBounds().pad(0.2));
- }else{
-   document.getElementById('mapStatus').textContent='No tower locations have been saved yet.';
  }
 }
 
 function centerMapOnDevice(){
  ensureTowerMap();
- if(!navigator.geolocation){
-   document.getElementById('mapStatus').textContent='Location is not available in this browser.';
-   return;
- }
- document.getElementById('mapStatus').textContent='Getting your location…';
+ if(!navigator.geolocation)return;
  navigator.geolocation.getCurrentPosition(pos=>{
    towerMap.setView([pos.coords.latitude,pos.coords.longitude],14);
-   L.circleMarker([pos.coords.latitude,pos.coords.longitude],{radius:7}).addTo(towerMap).bindPopup('Your current location').openPopup();
-   document.getElementById('mapStatus').textContent='Centered on your current location.';
- },()=>{
-   document.getElementById('mapStatus').textContent='Could not get your current location. Safari may need location permission.';
- },{enableHighAccuracy:true,timeout:10000});
+ },()=>{}, {enableHighAccuracy:true,timeout:10000});
 }
 
 function useCurrentLocationForForm(){
- if(!navigator.geolocation){
-   document.getElementById('locationFormStatus').textContent='Location is not available in this browser.';
-   return;
- }
- document.getElementById('locationFormStatus').textContent='Getting your current location…';
+ if(!navigator.geolocation)return;
  navigator.geolocation.getCurrentPosition(pos=>{
    document.getElementById('fLat').value=pos.coords.latitude.toFixed(6);
    document.getElementById('fLon').value=pos.coords.longitude.toFixed(6);
-   document.getElementById('locationFormStatus').textContent='Current location added. Save the tower to keep it.';
- },()=>{
-   document.getElementById('locationFormStatus').textContent='Could not get location. Check Safari location permission.';
- },{enableHighAccuracy:true,timeout:10000});
+   const msg=document.getElementById('locationFormStatus');
+   if(msg)msg.textContent='Current location added. Save the tower to keep it.';
+ },()=>{}, {enableHighAccuracy:true,timeout:10000});
 }
 
 function pickLocationOnMap(){
- const lat=document.getElementById('fLat').value.trim();
- const lon=document.getElementById('fLon').value.trim();
  showTab('map',document.querySelectorAll('.tab')[3]);
  setTimeout(()=>{
    ensureTowerMap();
+   towerMap.invalidateSize();
    locationPickMode=true;
-   document.getElementById('mapStatus').textContent='Tap the map where this tower is located.';
-   if(validCoord(lat,-90,90)&&validCoord(lon,-180,180)){
-     towerMap.setView([Number(lat),Number(lon)],14);
-   }
+   const status=document.getElementById('mapStatus');
+   if(status)status.textContent='Tap the map where this tower is located.';
  },100);
 }
 
-// Enhance tab switching so Leaflet renders correctly when Map becomes visible.
-const _showTabOriginal=showTab;
+async function pasteMapLocationFromClipboard(){
+ const status=document.getElementById('mapUpdateStatus');
+ try{
+   const text=await navigator.clipboard.readText();
+   document.getElementById('mapUpdateCoords').value=text;
+   const coords=parseMapsLocation(text);
+   if(coords)status.textContent=`Found ${coords.lat.toFixed(6)}, ${coords.lon.toFixed(6)}. Tap Set / Move Tower Location.`;
+   else status.textContent='No recognizable coordinates found in the clipboard.';
+ }catch(e){
+   status.textContent='Safari blocked clipboard access. Paste the Maps link manually.';
+ }
+}
+
+// Make Map initialize correctly when the tab becomes visible.
+const __showTabBase=showTab;
 showTab=function(name,btn){
- _showTabOriginal(name,btn);
+ __showTabBase(name,btn);
  if(name==='map'){
    setTimeout(()=>{
      ensureTowerMap();
-     towerMap.invalidateSize();
-     renderTowerMap();
+     if(towerMap){towerMap.invalidateSize();renderTowerMap();}
    },120);
  }
 };
+
+document.addEventListener('DOMContentLoaded',()=>{
+ const a=document.getElementById('mapUpdateId');
+ const b=document.getElementById('mapUpdateCoords');
+ const c=document.getElementById('mapEditId');
+ if(a)a.addEventListener('keydown',e=>{if(e.key==='Enter')setTowerLocationById();});
+ if(b)b.addEventListener('keydown',e=>{if(e.key==='Enter')setTowerLocationById();});
+ if(c)c.addEventListener('keydown',e=>{if(e.key==='Enter')selectTowerForMapEdit();});
+});
+
+
+let pendingTowerChanges={};
+
+function cloneRecord(r){
+ return JSON.parse(JSON.stringify(r));
+}
+
+function pendingKey(r){
+ return keyOf(r);
+}
+
+function getEffectiveRecord(r){
+ const k=pendingKey(r);
+ return pendingTowerChanges[k] ? {...r,...pendingTowerChanges[k].changes} : r;
+}
+
+function stageExistingTowerChange(record,changes,description){
+ if(!record)return;
+ const k=pendingKey(record);
+ const existing=pendingTowerChanges[k]||{
+   key:k,
+   original:cloneRecord(record),
+   changes:{},
+   description:description||'Tower update'
+ };
+ existing.changes={...existing.changes,...changes};
+ existing.description=description||existing.description;
+ pendingTowerChanges[k]=existing;
+ refreshPendingChangesUI();
+}
+
+function refreshPendingChangesUI(){
+ const count=Object.keys(pendingTowerChanges).length;
+ const bar=document.getElementById('pendingChangesBar');
+ const c=document.getElementById('pendingChangesCount');
+ if(c)c.textContent=String(count);
+ if(bar){
+   if(count)bar.classList.remove('hidden');
+   else bar.classList.add('hidden');
+ }
+}
+
+function saveAllPendingChanges(){
+ if(!DB)return;
+ const items=Object.values(pendingTowerChanges);
+ if(!items.length){
+   toast('No pending changes.');
+   return;
+ }
+
+ for(const item of items){
+   const idx=DB.records.findIndex(r=>keyOf(r)===item.key);
+   if(idx>=0){
+     if(item.changes.__delete){
+       DB.records.splice(idx,1);
+     }else{
+       const c={...item.changes};
+       delete c.__delete;
+       DB.records[idx]={...DB.records[idx],...c};
+     }
+   }
+ }
+
+ pendingTowerChanges={};
+ saveLocal();
+ renderRegistry();
+ refreshCarrierList();
+ if(towerMap)renderTowerMap();
+ refreshPendingChangesUI();
+ toast('All pending changes saved.');
+}
+
+function discardAllPendingChanges(){
+ if(!Object.keys(pendingTowerChanges).length){
+   toast('No pending changes.');
+   return;
+ }
+ if(!confirm('Discard all unsaved changes to existing towers?'))return;
+ pendingTowerChanges={};
+ refreshPendingChangesUI();
+ if(towerMap)renderTowerMap();
+ renderRegistry();
+ toast('Pending changes discarded.');
+}
 
 fetch('registry.json').then(r=>r.json()).then(j=>{
  BUILTIN=j; DB=loadLocal()||JSON.parse(JSON.stringify(j)); renderRegistry(); refreshCarrierList(); syncPlmn();
@@ -929,7 +965,7 @@ function renderRegistry(){
  const sat=DB.records.filter(r=>r.carrier==='T-Mobile Starlink').length;
  document.getElementById('counts').innerHTML=`<div class="countbox"><b>${lte}</b>LTE IDs</div><div class="countbox"><b>${nr}</b>5G IDs</div><div class="countbox"><b>${lte+nr}</b>Terrestrial</div><div class="countbox"><b>${sat}</b>Starlink</div>`;
  document.getElementById('records').innerHTML=rows.map(r=>`<div class="record">
- <b>${esc(r.site)}</b><br><span class="badge">${esc(r.carrier)}</span><span class="badge">${esc(r.radio)}</span><span class="badge">${esc(r.status)}</span>
+ <b>${esc(r.site)}</b><br><span class="badge">${esc(r.carrier)}</span><span class="badge">${esc(r.radio)}</span><span class="badge">${esc(r.status)}</span>${pendingTowerChanges[keyOf(r)]?'<span class="badge">Pending change</span>':''}
  <div class="small">${r.eNB?`eNB ${esc(r.eNB)}`:`gNB ${esc(r.gNB)}`} · ${esc(r.bands||'bands unknown')} ${r.bandwidth?'· '+esc(r.bandwidth):''}${r.latitude&&r.longitude?' · <span title="Location saved: '+esc(r.latitude)+', '+esc(r.longitude)+'" aria-label="Location saved">🌐</span>':''}</div>
  <div class="record-actions"><button class="secondary" onclick='editRecord(${JSON.stringify(keyOf(r))})'>Edit</button><button class="danger" onclick='deleteRecord(${JSON.stringify(keyOf(r))})'>Delete</button></div>
  </div>`).join('') || '<div class="muted" style="padding:12px">No matching towers.</div>';
@@ -968,7 +1004,7 @@ function calcFormReverse(){
 }
 function clearForm(){
  ['editKey','fId','fSite','fBands','fBandwidth','fCell','fLocal','fPci','fTac','fLat','fLon','fNotes'].forEach(id=>document.getElementById(id).value='');
- document.getElementById('fCarrier').value='T-Mobile';document.getElementById('fPlmn').dataset.auto='1';document.getElementById('fStatus').value='confirmed';document.getElementById('fRadio').value='LTE';document.getElementById('formTitle').textContent='Add Tower';document.getElementById('duplicateWarn').innerHTML='';if(document.getElementById('idAutofillStatus'))document.getElementById('idAutofillStatus').textContent='';syncPlmn();updateIdLabel();
+ document.getElementById('fCarrier').value='T-Mobile';document.getElementById('fPlmn').dataset.auto='1';document.getElementById('fStatus').value='confirmed';document.getElementById('fRadio').value='LTE';document.getElementById('formTitle').textContent='Add Tower';document.getElementById('duplicateWarn').innerHTML='';const usb=document.getElementById('unknownScanBanner');if(usb){usb.classList.add('hidden');usb.innerHTML='';}const usa=document.getElementById('unknownScanActions');if(usa)usa.classList.add('hidden');if(document.getElementById('idAutofillStatus'))document.getElementById('idAutofillStatus').textContent='';syncPlmn();updateIdLabel();
 }
 
 function autofillTowerById(){
@@ -1055,15 +1091,29 @@ function saveRecord(){
  const rec={carrier,radio,site,bands:document.getElementById('fBands').value.trim(),bandwidth:document.getElementById('fBandwidth').value.trim(),status:document.getElementById('fStatus').value,notes:document.getElementById('fNotes').value.trim(),plmn:plmnValue,cell_id:document.getElementById('fCell').value.trim(),local_cell:document.getElementById('fLocal').value.trim(),pci:document.getElementById('fPci').value.trim(),tac:document.getElementById('fTac').value.trim(),latitude:document.getElementById('fLat').value.trim(),longitude:document.getElementById('fLon').value.trim()};
  if(radio==='LTE')rec.eNB=id;else rec.gNB=id;
  if(oldKey){
-   const i=DB.records.findIndex(r=>keyOf(r)===oldKey); if(i>=0)DB.records[i]=rec; else DB.records.push(rec);
- } else DB.records.push(rec);
+   const existing=DB.records.find(r=>keyOf(r)===oldKey);
+   if(existing){
+     const changes={...rec};
+     delete changes.eNB; delete changes.gNB;
+     stageExistingTowerChange(existing,changes,'Tower details edit');
+     toast('Tower edit added to pending changes.');
+   }else{
+     DB.records.push(rec);
+     saveLocal();
+     toast('New tower saved.');
+   }
+ } else {
+   DB.records.push(rec);
+   saveLocal();
+   toast('New tower saved.');
+ }
  if(carrier==='STRATA Networks'&&id==='1079'&&site!=='UNMAPPED STRATA SITE ?'&&rec.status==='confirmed'){
    // User is explicitly naming 1079 in-app, so allow it.
  }
- saveLocal();renderRegistry();refreshCarrierList();if(towerMap)renderTowerMap();clearForm();toast('Tower saved.');
+ renderRegistry();refreshCarrierList();if(towerMap)renderTowerMap();clearForm();
 }
 function editRecord(k){
- const r=DB.records.find(x=>keyOf(x)===k);if(!r)return;
+ let r=DB.records.find(x=>keyOf(x)===k);if(!r)return;r=getEffectiveRecord(r);
  showTab('add',document.querySelectorAll('.tab')[4]);document.getElementById('formTitle').textContent='Edit Tower';document.getElementById('editKey').value=k;
  document.getElementById('fCarrier').value=r.carrier;document.getElementById('fPlmn').value=r.plmn||PLMNS[r.carrier]||'';document.getElementById('fRadio').value=r.radio;
  document.getElementById('fId').value=r.eNB||r.gNB||'';document.getElementById('fSite').value=r.site||'';document.getElementById('fStatus').value=r.status||'confirmed';
@@ -1073,8 +1123,9 @@ function editRecord(k){
 }
 function deleteRecord(k){
  const r=DB.records.find(x=>keyOf(x)===k); if(!r)return;
- if(!confirm(`Delete ${r.site} (${r.eNB||r.gNB})?`))return;
- DB.records=DB.records.filter(x=>keyOf(x)!==k);saveLocal();renderRegistry();toast('Tower deleted.');
+ if(!confirm(`Mark ${r.site} (${r.eNB||r.gNB}) for deletion? It will not be removed until Save All Changes.`))return;
+ stageExistingTowerChange(r,{__delete:true},'Delete tower');
+ toast('Deletion added to pending changes.');
 }
 function exportRegistry(){
  const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='Master_Cellular_Tower_Registry_Backup.json';a.click();URL.revokeObjectURL(a.href);toast('Registry exported.');
@@ -1233,7 +1284,10 @@ function identifyFromScan(fields){
 
  let tacnote='';
  const unknownAddButton = !rec
-   ? `<div style="margin-top:12px"><button class="good" onclick='prepareUnknownTowerFromScan(${JSON.stringify(fields)})'>Add This Tower</button></div>`
+   ? `<div class="row" style="margin-top:12px">
+        <button class="good" onclick='prepareUnknownTowerFromScan(${JSON.stringify(fields)})'>Add This Tower</button>
+        <button class="good" onclick='prepareUnknownTowerForMap(${JSON.stringify(fields)})'>Place on Map</button>
+      </div>`
    : '';
  if(carrier==='STRATA Networks'&&fields.tac){
    tacnote=fields.tac==='101'?'Other carriers NOT allowed to roam':
@@ -1579,11 +1633,60 @@ function identifyFromScan(fields){
 }
 
 
-function prepareUnknownTowerFromScan(fields){
+
+
+function cancelScannedTowerPlacement(){
+ pendingScannedTowerForMap=null;
+ if(pendingPickMarker){pendingPickMarker.remove();pendingPickMarker=null;}
+ const c=document.getElementById('scanMapPlacementControls');
+ if(c)c.classList.add('hidden');
+ const s=document.getElementById('mapStatus');
+ if(s)s.textContent='Scanned tower placement canceled.';
+
+ // AUTO_UNKNOWN_ROUTE_v31:
+ // If the screenshot produced a valid carrier/PLMN + derived eNB/gNB but no registry record,
+ // automatically open the full Add/Edit page with the scan data prefilled.
+ if(!rec && fields && fields.sid && fields.plmn){
+   setTimeout(()=>{
+     prepareUnknownTowerFromScan(fields);
+   },250);
+ }
+}
+
+function prepareUnknownTowerForMap(fields){
+ if(!fields)return;
+ pendingScannedTowerForMap=JSON.parse(JSON.stringify(fields));
+ const c=document.getElementById('scanMapPlacementControls'); if(c)c.classList.remove('hidden');
+
+ // Move to map and wait for a tap.
+ showTab('map',document.querySelectorAll('.tab')[3]);
+ setTimeout(()=>{
+   ensureTowerMap();
+   if(towerMap){
+     towerMap.invalidateSize();
+
+     // Center on a reasonable area if we already know a related/current location.
+     const lat=document.getElementById('fLat')?.value;
+     const lon=document.getElementById('fLon')?.value;
+     if(validCoord(lat,-90,90)&&validCoord(lon,-180,180)){
+       towerMap.setView([Number(lat),Number(lon)],15);
+     }
+
+     document.getElementById('mapStatus').innerHTML=
+       `<b>Placing scanned unknown tower.</b> Tap the map where this tower is located. `+
+       `Scanned ID: ${esc(fields.sid||'Unknown')} · ${esc(fields.radio||'Unknown')} · PLMN ${esc(fields.plmn||'Unknown')}.`;
+   }
+ },120);
+}
+
+function finishScannedTowerMapPlacement(lat,lon){
+ const fields=pendingScannedTowerForMap;
  if(!fields)return;
 
- showTab('add',document.querySelectorAll('.tab')[4]);
+ pendingScannedTowerForMap=null;
+ const c=document.getElementById('scanMapPlacementControls'); if(c)c.classList.add('hidden');
 
+ showTab('add',document.querySelectorAll('.tab')[4]);
  clearForm();
 
  const carrier=(DB && DB.plmns && fields.plmn) ? (DB.plmns[fields.plmn]||'') : '';
@@ -1596,9 +1699,6 @@ function prepareUnknownTowerFromScan(fields){
 
  document.getElementById('fId').value=fields.sid||'';
  document.getElementById('fStatus').value='unknown';
-
- // For a brand-new scanned tower, leave the site name intentionally blank.
- // User confirms the actual tower name rather than the app inventing one.
  document.getElementById('fSite').value='';
 
  document.getElementById('fBands').value=fields.band||'';
@@ -1608,24 +1708,160 @@ function prepareUnknownTowerFromScan(fields){
  document.getElementById('fPci').value=fields.pci||'';
  document.getElementById('fTac').value=fields.tac||'';
 
- const noteParts=[];
- noteParts.push('Added from screenshot scan.');
+ document.getElementById('fLat').value=Number(lat).toFixed(6);
+ document.getElementById('fLon').value=Number(lon).toFixed(6);
+
+ const noteParts=['Added from screenshot scan and map placement.'];
  if(fields.rsrp)noteParts.push(`RSRP ${fields.rsrp}`);
  if(fields.rsrq)noteParts.push(`RSRQ ${fields.rsrq}`);
  if(fields.snr)noteParts.push(`SNR/SINR ${fields.snr}`);
  document.getElementById('fNotes').value=noteParts.join(' · ');
 
  document.getElementById('editKey').value='';
- document.getElementById('formTitle').textContent='Add Unknown Tower';
- document.getElementById('idAutofillStatus').textContent='New tower from screenshot. Review the autofilled values, enter the tower/site name and any missing details, then save.';
- document.getElementById('duplicateWarn').innerHTML='<div class="notice"><b>New registry ID.</b> This scanned eNB/gNB is not currently in the registry.</div>';
+ document.getElementById('formTitle').textContent='Add Scanned Tower';
+ document.getElementById('idAutofillStatus').textContent=
+   `Unknown scanned tower placed at ${Number(lat).toFixed(6)}, ${Number(lon).toFixed(6)}. Review the prefilled values, enter the tower/site name, then save.`;
+ document.getElementById('duplicateWarn').innerHTML=
+   '<div class="notice"><b>New registry ID.</b> Screenshot data and map coordinates are already filled in.</div>';
 
  if(fields.cell)calcFormIds();
 
- // Focus the site name because that is normally the main missing human-confirmed field.
  setTimeout(()=>document.getElementById('fSite').focus(),150);
 }
 
+
+
+function saveUnknownScannedTower(){
+ const site=(document.getElementById('fSite')?.value||'').trim();
+ const id=(document.getElementById('fId')?.value||'').trim();
+ const plmn=(document.getElementById('fPlmn')?.value||'').replace(/\D/g,'');
+ const carrier=(document.getElementById('fCarrier')?.value||'').trim();
+
+ if(!site){
+   alert('Enter the confirmed tower/site name before saving.');
+   document.getElementById('fSite')?.focus();
+   return;
+ }
+ if(!id){
+   alert('The scanned tower needs an eNB/gNB ID before it can be saved.');
+   document.getElementById('fId')?.focus();
+   return;
+ }
+ if(!plmn && !carrier){
+   alert('Enter the carrier or PLMN before saving.');
+   document.getElementById('fPlmn')?.focus();
+   return;
+ }
+
+ // Use the app's normal save path so duplicate protection and persistence remain intact.
+ saveTower();
+
+ // Verify that the record now exists before removing the unknown workflow state.
+ const radio=(document.getElementById('fRadio')?.value||'LTE').toUpperCase();
+ const saved=(DB.towers||[]).find(t =>
+   String(t.id)===String(id) &&
+   String(t.radio||'').toUpperCase()===radio &&
+   (
+     (plmn && String(t.plmn||'').replace(/\D/g,'')===plmn) ||
+     (!plmn && carrier && String(t.carrier||'').toLowerCase()===carrier.toLowerCase())
+   )
+ );
+
+ if(saved){
+   pendingScannedTowerForMap=null;
+
+   const banner=document.getElementById('unknownScanBanner');
+   if(banner){
+     banner.classList.add('hidden');
+     banner.innerHTML='';
+   }
+   const actions=document.getElementById('unknownScanActions');
+   if(actions)actions.classList.add('hidden');
+
+   // Remove the old unknown scan result card so it no longer appears as unresolved.
+   const identity=document.getElementById('scanIdentity');
+   if(identity)identity.innerHTML='';
+
+   const results=document.getElementById('scanResults');
+   if(results)results.classList.add('hidden');
+
+   const status=document.getElementById('scanStatus');
+   if(status)status.textContent='Tower saved to the registry. It is no longer an unknown tower.';
+
+   toast('Tower saved and removed from Unknown.');
+   renderRegistry();
+   showTab('registry',document.querySelectorAll('.tab')[2]);
+ }
+}
+
+function prepareUnknownTowerFromScan(fields){
+ if(!fields)return;
+
+ // Open the full Add/Edit page automatically.
+ showTab('add',document.querySelectorAll('.tab')[4]);
+ clearForm();
+
+ const carrier=(DB && DB.plmns && fields.plmn) ? (DB.plmns[fields.plmn]||'') : '';
+
+ document.getElementById('fCarrier').value=carrier||'';
+ document.getElementById('fPlmn').value=fields.plmn||'';
+ document.getElementById('fPlmn').dataset.auto='0';
+
+ document.getElementById('fRadio').value=fields.radio||'LTE';
+ updateIdLabel();
+
+ document.getElementById('fId').value=fields.sid||'';
+ document.getElementById('fStatus').value='unknown';
+ document.getElementById('fSite').value='';
+
+ document.getElementById('fBands').value=fields.band||'';
+ document.getElementById('fBandwidth').value=fields.bw||'';
+ document.getElementById('fCell').value=fields.cell||'';
+ document.getElementById('fLocal').value=fields.local||'';
+ document.getElementById('fPci').value=fields.pci||'';
+ document.getElementById('fTac').value=fields.tac||'';
+
+ // Do not invent a location. Leave map coordinates blank until the user supplies them.
+ if(document.getElementById('fLat'))document.getElementById('fLat').value='';
+ if(document.getElementById('fLon'))document.getElementById('fLon').value='';
+
+ const noteParts=['Added from unknown screenshot scan.'];
+ if(fields.rsrp)noteParts.push(`RSRP ${fields.rsrp}`);
+ if(fields.rsrq)noteParts.push(`RSRQ ${fields.rsrq}`);
+ if(fields.snr)noteParts.push(`SNR/SINR ${fields.snr}`);
+ document.getElementById('fNotes').value=noteParts.join(' · ');
+
+ document.getElementById('editKey').value='';
+ document.getElementById('formTitle').textContent='Add Unknown Scanned Tower';
+
+ const banner=document.getElementById('unknownScanBanner');
+ const unknownActions=document.getElementById('unknownScanActions');
+ if(unknownActions)unknownActions.classList.remove('hidden');
+
+ if(banner){
+   banner.classList.remove('hidden');
+   banner.innerHTML=
+     `<b>Unknown tower detected.</b> The screenshot-derived values are already filled in. `+
+     `Enter the actual tower/site name, verify carrier/PLMN and radio details, add a map location if desired, then tap Save Tower.`;
+ }
+
+ const auto=document.getElementById('idAutofillStatus');
+ if(auto){
+   auto.textContent=
+     `Scanned ID ${fields.sid||'Unknown'} is not currently in the registry. Review the fields below before saving.`;
+ }
+
+ document.getElementById('duplicateWarn').innerHTML=
+   '<div class="notice"><b>New registry ID.</b> This record will be added as a new tower unless an existing carrier + radio + ID match is found before save.</div>';
+
+ if(fields.cell)calcFormIds();
+
+ // Main human-confirmed field is the name.
+ setTimeout(()=>{
+   const site=document.getElementById('fSite');
+   if(site)site.focus();
+ },180);
+}
 function fillScanResults(x,text){
  document.getElementById('sPlmn').value=x.plmn;
  document.getElementById('sRadio').value=x.radio;

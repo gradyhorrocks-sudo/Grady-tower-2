@@ -172,3 +172,107 @@ MAP LINK PARSER v25:
 - The extracted coordinates immediately update the chosen eNB/gNB location and map pin.
 - Existing draggable/tap map editing, satellite/street layers, Registry globe, Scan, Lookup,
   Add/Edit, Backup, fixed PIN 159357, GitHub Pages and PWA support preserved.
+
+SCANNED UNKNOWN MAP FLOW v26:
+- If Scan & Identify finds an eNB/gNB not in the registry, the result now shows Place on Map.
+- Place on Map opens the Map tab and waits for a map tap.
+- After tapping the tower location, Add/Edit opens automatically with screenshot data plus latitude/longitude prefilled.
+- Prefilled fields include PLMN/carrier when known, LTE/5G, eNB/gNB, Cell ID/NCI, sector/local cell,
+  band, bandwidth, PCI, TAC, signal notes, and selected map coordinates.
+- Tower/site name stays blank for user confirmation.
+- Cancel Scanned Tower Placement is available while map placement is active.
+- Existing map-link parsing, draggable map editing, satellite/street layers, Registry globe,
+  universal Lookup, ID autofill, future-carrier support, Backup, PIN 159357,
+  GitHub Pages and Safari Home Screen/PWA support preserved.
+
+SCAN CLEAR + PHOTO PASTE v27:
+- Scan page now has ✕ Clear Scan to reset the selected image, preview, OCR fields,
+  identity result, signal fields, and unfinished scanned-tower map placement.
+- Scan page now has Paste Photo for screenshots copied to the clipboard.
+- When browser clipboard image access is supported, pasted photos feed into the same scanner.
+- Safari may require clipboard permission; photo picker remains available as fallback.
+- Existing unknown scan-to-map flow, map-link parsing, draggable map editing, satellite/street map,
+  Registry globe, Lookup, Add/Edit, Backup, fixed PIN 159357, GitHub Pages and PWA preserved.
+
+IPHONE SAFE AREA v28:
+- App now detects iPhone/iOS-style browser and Home Screen environments.
+- Uses Apple's CSS safe-area insets so text and controls stay clear of the Dynamic Island,
+  camera/sensor cutout, rounded corners, and Home indicator.
+- viewport-fit=cover enabled with safe padding on all four sides.
+- Mobile layout becomes single-column where needed and keeps controls readable at iPhone width.
+- Landscape mode also respects left/right cutout safe areas.
+- Exact iPhone model is not guessed because Safari does not reliably expose model identity;
+  layout adapts to the actual viewport/safe-area instead.
+- All v27 Scan, Paste Photo, Clear Scan, map, registry, lookup, backup and PIN features preserved.
+
+CUSTOM HOME SCREEN ICON v29:
+- The actual Tower Registry PWA now uses the tower-on-a-mountain sunset artwork with a person holding a phone.
+- Added Apple touch icon (180x180) for Safari Add to Home Screen.
+- Added 192x192 and 512x512 PWA icons and updated the web manifest.
+- This changes the real Tower Registry Home Screen icon, not a mockup of an iPhone Home Screen.
+- If an older icon remains on iPhone, remove the existing Home Screen shortcut and add the site to Home Screen again after deploying v29.
+
+FIRST-TIME DEVICE PIN v30:
+- PIN remains fixed at 159357.
+- PIN is required only the first time the app is opened on each device/browser.
+- After successful entry, that device is marked trusted in localStorage and opens automatically later.
+- Clearing Safari/site data removes the trust and requires the PIN again.
+- Backup includes a "Require PIN Again on This Device" control to manually revoke device trust.
+- This remains an app-level lock; public GitHub Pages files are not server-side password protected.
+- All v29 functionality and custom Home Screen icon are preserved.
+
+AUTO UNKNOWN SCAN PAGE v31:
+- When Scan & Identify successfully derives a PLMN + eNB/gNB that is not in the registry,
+  the app automatically opens the full Add/Edit page.
+- The page is titled "Add Unknown Scanned Tower" and includes an Unknown tower detected banner.
+- Prefills carrier when known, PLMN, LTE/5G, eNB/gNB, Cell ID/NCI, sector/local cell,
+  band, bandwidth, PCI, TAC, and signal notes.
+- Tower/site name and coordinates remain for user confirmation.
+- User can save directly or place the tower on the map before saving.
+- Existing scan-to-map, paste photo, clear scan, map-link parsing, draggable map editing,
+  satellite/street maps, universal Lookup, Registry globe, Backup, first-device PIN trust,
+  custom Home Screen icon, GitHub Pages and PWA support preserved.
+
+UNKNOWN SCAN SAVE v32:
+- Add Unknown Scanned Tower page now has a prominent "Save Tower to Registry" button.
+- Requires a confirmed tower/site name plus eNB/gNB ID and carrier/PLMN before saving.
+- Uses the existing registry save path so duplicate protection and local persistence remain active.
+- After a successful save, the tower is removed from the unresolved Unknown scan state.
+- The old Unknown result card is cleared and the app opens Registry so the newly saved record is visible.
+- All v31 and earlier functionality is preserved.
+
+FIRST-TIME MAP LOCATION v33:
+- Map section formerly called Update Tower Location is now Add Tower Location by eNB/gNB.
+- Enter an existing registry eNB/gNB plus coordinates, Apple Maps link, or Google Maps link.
+- Adds latitude/longitude only when that tower does not already have a saved location.
+- If the tower already has coordinates, the app refuses to overwrite them and directs the user to Place / Drag Tower.
+- Registry 🌐 indicator and map pin appear immediately after first-time placement.
+- All v32 and earlier functionality is preserved.
+
+AUTHORITATIVE MAP MOVES v34:
+- Coordinates are authoritative for tower placement.
+- Set / Move Tower Location by eNB/gNB replaces any previous coordinates with the newly supplied coordinates or Maps-link location.
+- Selecting a tower under Place / Drag Tower makes its pin draggable.
+- Dragging the pin immediately replaces the saved coordinates.
+- Tapping a new map location while a tower is selected immediately replaces the saved coordinates.
+- Towers with no prior location are placed the same way.
+- Restored complete map runtime functions so map controls operate consistently.
+- All earlier registry, scan, unknown-tower, PIN, icon, backup and GitHub Pages features are preserved.
+
+CONFIRM MAP LOCATION v35:
+- Coordinate entry, Maps-link placement, map tapping, and marker dragging now preview the proposed tower location instead of saving immediately.
+- Added Save Location and Cancel controls.
+- Save Location commits the new latitude/longitude to the registry.
+- Cancel restores the previously saved tower location.
+- This prevents accidental map moves from immediately changing the authoritative registry.
+- All v34 and earlier functionality is preserved.
+
+SAVE ALL PENDING CHANGES v36:
+- Existing tower edits are staged as pending changes instead of being saved immediately.
+- Map moves, coordinate changes, Maps-link moves, tower detail edits, and deletions require Save All Changes.
+- Global Pending Changes bar shows the number of records with unsaved changes.
+- Save All Changes commits all staged modifications together.
+- Discard All throws away every staged change.
+- New tower records are still saved normally when explicitly added.
+- Registry shows a Pending change badge on records with staged edits.
+- All v35 and earlier features are preserved.
