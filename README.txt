@@ -143,3 +143,23 @@ LOCATION GLOBE v22:
 - Globe indicates that the tower has a saved map location.
 - Existing satellite/street map, Scan, Lookup, Add/Edit, ID autofill, unknown-tower flow,
   Backup, PIN 159357, GitHub Pages and PWA support preserved.
+
+QUICK MAP LOCATION UPDATE v23:
+- Map tab now includes an Update Tower Location panel.
+- Enter an eNB/gNB and paste decimal coordinates to update that tower's saved location.
+- Example accepted format: 40.455500, -109.528700.
+- The registry globe indicator and map pin update immediately.
+- If the numeric ID matches multiple records, the app refuses to silently update all of them.
+- Existing satellite/street map, Scan, Lookup, Registry, Add/Edit, ID autofill,
+  unknown-tower flow, Backup, PIN 159357, GitHub Pages and PWA support preserved.
+
+DRAGGABLE MAP EDIT v24:
+- Map tab includes Place / Drag Tower.
+- Enter an eNB/gNB and select the matching tower.
+- If the tower has a saved location, its marker becomes draggable.
+- Dragging the marker saves the new coordinates immediately.
+- While a tower is selected for map editing, tapping anywhere on the map moves that tower there and saves immediately.
+- Towers without a saved location can be placed by selecting them and tapping the map.
+- Stop Editing exits the map-edit mode.
+- Existing coordinate-paste updater, satellite/street map, Registry globe indicator,
+  Scan, Lookup, Add/Edit, Backup, fixed PIN 159357, GitHub Pages and PWA support preserved.

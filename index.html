@@ -177,6 +177,42 @@ button.good{background:#166534}
 </div>
 <div id="towerMap" style="margin-top:12px"></div>
 <div id="mapStatus" class="small muted mapHint"></div>
+
+<div class="card" style="margin-top:14px">
+<h3>Update Tower Location</h3>
+<p class="muted small">Enter an eNB or gNB, then paste coordinates such as <b>40.455500, -109.528700</b>. The matching tower will be updated without opening Add/Edit.</p>
+<div class="grid">
+<div>
+<label>eNB / gNB</label>
+<input id="mapUpdateId" inputmode="numeric" placeholder="1070">
+</div>
+<div>
+<label>Coordinates</label>
+<input id="mapUpdateCoords" placeholder="40.455500, -109.528700">
+</div>
+</div>
+<div style="margin-top:10px">
+<button onclick="updateTowerLocationById()">Update Location</button>
+</div>
+<div id="mapUpdateStatus" class="small muted" style="margin-top:8px"></div>
+</div>
+
+<div class="card" style="margin-top:14px">
+<h3>Place / Drag Tower</h3>
+<p class="muted small">Enter an eNB or gNB, then choose the tower. Tap the map to move it, or drag its pin to fine-tune the location. Changes save immediately.</p>
+<div class="grid">
+<div>
+<label>eNB / gNB</label>
+<input id="mapEditId" inputmode="numeric" placeholder="1070">
+</div>
+<div style="align-self:end">
+<button onclick="selectTowerForMapEdit()">Select Tower</button><button class="secondary" style="margin-top:8px" onclick="stopTowerMapEdit()">Stop Editing</button>
+</div>
+</div>
+<div id="mapEditStatus" class="small muted" style="margin-top:8px"></div>
+</div>
+
+
 </div>
 </section>
 
@@ -488,6 +524,8 @@ let towerMap=null;
 let towerMarkers=[];
 let locationPickMode=false;
 let pendingPickMarker=null;
+let activeMapEditRecord=null;
+let activeMapEditMarker=null;
 
 function validCoord(v,min,max){
  const n=Number(v);
@@ -528,6 +566,10 @@ function ensureTowerMap(){
  ).addTo(towerMap);
 
  towerMap.on('click',e=>{
+   if(activeMapEditRecord){
+     saveMapEditedLocation(activeMapEditRecord,e.latlng.lat,e.latlng.lng,true);
+     return;
+   }
    if(!locationPickMode)return;
    document.getElementById('fLat').value=e.latlng.lat.toFixed(6);
    document.getElementById('fLon').value=e.latlng.lng.toFixed(6);
@@ -542,14 +584,97 @@ function renderTowerMap(){
  if(!towerMap||!DB)return;
  towerMarkers.forEach(m=>m.remove());
  towerMarkers=[];
+ activeMapEditMarker=null;
+
  for(const r of DB.records){
    const lat=Number(r.latitude),lon=Number(r.longitude);
    if(!validCoord(lat,-90,90)||!validCoord(lon,-180,180))continue;
-   const m=L.marker([lat,lon]).addTo(towerMap);
-   m.bindPopup(`<b>${esc(r.site)}</b><br>${esc(r.carrier)} · ${esc(r.radio)}<br>${r.eNB?'eNB '+esc(r.eNB):'gNB '+esc(r.gNB)}<br>${esc(r.bands||'bands unknown')}`);
+
+   const isEditing=activeMapEditRecord && keyOf(activeMapEditRecord)===keyOf(r);
+   const m=L.marker([lat,lon],{draggable:!!isEditing}).addTo(towerMap);
+
+   m.bindPopup(`<b>${esc(r.site)}</b><br>${esc(r.carrier)} · ${esc(r.radio)}<br>${r.eNB?'eNB '+esc(r.eNB):'gNB '+esc(r.gNB)}<br>${esc(r.bands||'bands unknown')}${isEditing?'<br><b>Drag this pin to move tower</b>':''}`);
+
+   if(isEditing){
+     activeMapEditMarker=m;
+     m.on('dragend',ev=>{
+       const ll=ev.target.getLatLng();
+       saveMapEditedLocation(r,ll.lat,ll.lng,false);
+     });
+     m.openPopup();
+   }
+
    towerMarkers.push(m);
  }
  document.getElementById('mapStatus').textContent=`${towerMarkers.length} saved tower location${towerMarkers.length===1?'':'s'} shown.`;
+}
+
+function selectTowerForMapEdit(){
+ if(!DB)return;
+ const id=document.getElementById('mapEditId').value.trim().replace(/[^\d]/g,'');
+ const status=document.getElementById('mapEditStatus');
+
+ if(!id){
+   status.textContent='Enter an eNB or gNB.';
+   return;
+ }
+
+ const matches=DB.records.filter(r=>String(r.eNB||r.gNB||'')===id);
+ if(!matches.length){
+   status.innerHTML=`No tower with eNB/gNB <b>${esc(id)}</b> is in the registry.`;
+   activeMapEditRecord=null;
+   renderTowerMap();
+   return;
+ }
+
+ if(matches.length>1){
+   const options=matches.map((r,i)=>`${i+1}. ${r.carrier} · ${r.radio} · ${r.site}`).join(' | ');
+   status.innerHTML=`More than one tower uses ID <b>${esc(id)}</b>: ${esc(options)}. Open Add/Edit and choose the exact record before map editing.`;
+   activeMapEditRecord=null;
+   renderTowerMap();
+   return;
+ }
+
+ activeMapEditRecord=matches[0];
+ ensureTowerMap();
+
+ const lat=Number(activeMapEditRecord.latitude),lon=Number(activeMapEditRecord.longitude);
+ if(validCoord(lat,-90,90)&&validCoord(lon,-180,180)){
+   towerMap.setView([lat,lon],16);
+   renderTowerMap();
+   status.innerHTML=`Editing <b>${esc(activeMapEditRecord.site)}</b>. Drag its pin or tap a new location on the map.`;
+ }else{
+   renderTowerMap();
+   status.innerHTML=`Editing <b>${esc(activeMapEditRecord.site)}</b>. It has no saved location yet. Tap the map where the tower should go.`;
+ }
+}
+
+function saveMapEditedLocation(record,lat,lon,fromMapTap){
+ if(!record)return;
+ record.latitude=Number(lat).toFixed(6);
+ record.longitude=Number(lon).toFixed(6);
+
+ saveLocal();
+ renderRegistry();
+
+ if(towerMap){
+   renderTowerMap();
+   towerMap.setView([Number(lat),Number(lon)],16);
+ }
+
+ const status=document.getElementById('mapEditStatus');
+ if(status){
+   status.innerHTML=`🌐 Updated <b>${esc(record.site)}</b> to ${Number(lat).toFixed(6)}, ${Number(lon).toFixed(6)}${fromMapTap?' from map tap':' by dragging the pin'}.`;
+ }
+ toast('Tower location updated.');
+}
+
+function stopTowerMapEdit(){
+ activeMapEditRecord=null;
+ activeMapEditMarker=null;
+ if(towerMap)renderTowerMap();
+ const status=document.getElementById('mapEditStatus');
+ if(status)status.textContent='Map editing stopped.';
 }
 
 function fitTowerMap(){
