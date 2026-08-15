@@ -198,7 +198,7 @@ main, .container, .content{
 <label>Screenshot</label>
 <input id="scanImage" type="file" accept="image/*">
 <div class="row" style="margin-top:10px">
-<button type="button" class="secondary" onclick="pasteScanImage()">Paste Photo</button>
+<button type="button" class="secondary" onclick="pasteScanImage()">Paste Current Clipboard</button>
 <button type="button" class="danger" onclick="clearScanPage()">✕ Clear Scan</button>
 </div>
 <div id="scanPasteStatus" class="small muted" style="margin-top:8px"></div>
@@ -1144,17 +1144,86 @@ const scanImage=document.getElementById('scanImage');
 const runOcrBtn=document.getElementById('runOcrBtn');
 
 scanImage.addEventListener('change',()=>{
- const f=scanImage.files&&scanImage.files[0];
+ const f=(scanImage.files&&scanImage.files[0]) || window._pastedScanFile;
  if(!f)return;
  if(scanObjectUrl)URL.revokeObjectURL(scanObjectUrl);
  scanObjectUrl=URL.createObjectURL(f);
- document.getElementById('scanPreview').src=scanObjectUrl;
- document.getElementById('scanPreviewWrap').classList.remove('hidden');
+ const preview=document.getElementById('scanPreview');
+ const wrap=document.getElementById('scanPreviewWrap');
+ preview.style.display='';
+ preview.src=scanObjectUrl;
+ wrap.style.display='';
+ wrap.classList.remove('hidden');
  document.getElementById('ocrStatus').textContent='Image selected. Tap Scan Screenshot.';
  document.getElementById('scanResults').classList.add('hidden');
  document.getElementById('scanIdentity').innerHTML='';
 
 });
+
+
+function clearScanPage(){
+ window._pastedScanFile=null;
+
+ const input=document.getElementById('scanImage');
+ if(input)input.value='';
+
+ if(scanObjectUrl){
+   try{URL.revokeObjectURL(scanObjectUrl);}catch(e){}
+   scanObjectUrl=null;
+ }
+
+ const preview=document.getElementById('scanPreview');
+ if(preview){
+   preview.removeAttribute('src');
+   preview.src='';
+   preview.style.display='none';
+ }
+
+ const wrap=document.getElementById('scanPreviewWrap');
+ if(wrap){
+   wrap.classList.add('hidden');
+   wrap.style.display='none';
+ }
+
+ const results=document.getElementById('scanResults');
+ if(results)results.classList.add('hidden');
+
+ const identity=document.getElementById('scanIdentity');
+ if(identity)identity.innerHTML='';
+
+ const raw=document.getElementById('ocrRaw');
+ if(raw)raw.value='';
+
+ const ocrStatus=document.getElementById('ocrStatus');
+ if(ocrStatus)ocrStatus.textContent='';
+
+ const scanStatus=document.getElementById('scanStatus');
+ if(scanStatus)scanStatus.textContent='';
+
+ const pasteStatus=document.getElementById('scanPasteStatus');
+ if(pasteStatus)pasteStatus.textContent='';
+
+ ['sPlmn','sRadio','sBand','sBw','sCell','sSid','sLocal','sPci','sTac','sRsrp','sRsrq','sSnr'].forEach(id=>{
+   const el=document.getElementById(id);
+   if(el)el.value='';
+ });
+
+ pendingScannedTowerForMap=null;
+ if(pendingPickMarker){
+   pendingPickMarker.remove();
+   pendingPickMarker=null;
+ }
+
+ requestAnimationFrame(()=>{
+   if(preview){
+     preview.removeAttribute('src');
+     preview.style.display='none';
+   }
+   if(wrap)wrap.style.display='none';
+ });
+
+ toast('Picture and scan cleared.');
+}
 
 function firstMatch(text,patterns){
  for(const p of patterns){
@@ -1937,6 +2006,69 @@ function refreshFromScanInputs(){
  el.addEventListener('input',refreshFromScanInputs);
  el.addEventListener('change',refreshFromScanInputs);
 });
+
+
+async function pasteScanImage(){
+ const status=document.getElementById('scanPasteStatus');
+ if(status)status.textContent='Reading current clipboard…';
+
+ // Never reuse an older pasted image.
+ window._pastedScanFile=null;
+
+ try{
+   if(!(navigator.clipboard && navigator.clipboard.read)){
+     if(status)status.textContent='Safari does not allow image clipboard reading here. Use the photo picker instead.';
+     return;
+   }
+
+   const items=await navigator.clipboard.read();
+
+   for(const item of items){
+     const imageType=item.types.find(t=>t.startsWith('image/'));
+     if(!imageType)continue;
+
+     const blob=await item.getType(imageType);
+     const ext=(blob.type.split('/')[1]||'png').replace('jpeg','jpg');
+     const file=new File([blob],`clipboard-screenshot-${Date.now()}.${ext}`,{type:blob.type});
+
+     // Put the image that is in the clipboard RIGHT NOW into the real file input.
+     const input=document.getElementById('scanImage');
+     try{
+       const dt=new DataTransfer();
+       dt.items.add(file);
+       input.files=dt.files;
+     }catch(e){
+       window._pastedScanFile=file;
+     }
+
+     // Refresh preview/change handlers using this exact current image.
+     input.dispatchEvent(new Event('change',{bubbles:true}));
+
+     if(status)status.textContent='Current clipboard image pasted. Scanning…';
+
+     const btn=document.getElementById('runOcrBtn');
+     if(btn)btn.click();
+     return;
+   }
+
+   // No image in clipboard: report current text instead of silently reusing anything old.
+   for(const item of items){
+     if(item.types.includes('text/plain')){
+       const text=await (await item.getType('text/plain')).text();
+       if(status){
+         status.textContent=text.trim()
+           ? `Clipboard currently contains text, not a photo: ${text.trim().slice(0,120)}`
+           : 'Clipboard is empty.';
+       }
+       return;
+     }
+   }
+
+   if(status)status.textContent='The current clipboard does not contain a photo.';
+ }catch(e){
+   if(status)status.textContent='Safari blocked clipboard access. Allow Paste/Clipboard access when prompted, then tap Paste Current Clipboard again.';
+ }
+}
 
 runOcrBtn.addEventListener('click',async()=>{
  const f=scanImage.files&&scanImage.files[0];

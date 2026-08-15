@@ -276,3 +276,21 @@ SAVE ALL PENDING CHANGES v36:
 - New tower records are still saved normally when explicitly added.
 - Registry shows a Pending change badge on records with staged edits.
 - All v35 and earlier features are preserved.
+
+LIVE CLIPBOARD PASTE v37:
+- Scan button is now Paste Current Clipboard.
+- Each tap reads the clipboard fresh at that exact moment.
+- The current copied image is placed into the real Scan file input and scanned immediately.
+- Older pasted images are never reused.
+- If the clipboard currently contains text rather than an image, the app reports that instead.
+- Clear Scan also clears any pasted-image fallback.
+- Safari may require clipboard permission.
+- All v36 and earlier functionality is preserved.
+
+CLEAR CURRENT PICTURE v38:
+- Fixed Clear Scan button implementation.
+- Clear now revokes and removes the current screenshot blob URL, empties the image source,
+  hides the preview and wrapper, clears the file input and pasted-image state.
+- Also clears OCR/results/identity fields and unfinished scan-to-map state.
+- Selecting or pasting the next screenshot restores the preview normally.
+- All v37 and earlier functionality is preserved.
