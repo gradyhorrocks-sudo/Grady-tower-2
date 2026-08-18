@@ -1,6 +1,9 @@
 <!doctype html>
 <html>
 <head>
+<!-- Master Cellular Tower Registry frontend v75: simple missing-tower Yes/No prompt -->
+
+<!-- Frontend v72: direct-URL recorded-click workflow diagnostics -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#111827">
@@ -34,6 +37,15 @@ function detectDeviceLayout(){
 }
 document.addEventListener('DOMContentLoaded',detectDeviceLayout);
 window.addEventListener('orientationchange',()=>setTimeout(detectDeviceLayout,150));
+
+
+// SEARCH_RESULT_EDIT_v48
+document.addEventListener('click',e=>{
+ const btn=e.target.closest('[data-search-edit-key]');
+ if(!btn)return;
+ e.preventDefault();
+ openSearchResultInEdit(btn.getAttribute('data-search-edit-key'));
+});
 
 </script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
@@ -114,8 +126,131 @@ main, .container, .content{
   }
 }
 
+
+/* v43 carrier brand colors */
+.carrier-brand{font-weight:800}
+.carrier-tmobile{color:#E20074!important}
+.carrier-att{color:#009FDB!important}
+.carrier-verizon{color:#CD040B!important}
+.carrier-strata{color:#F58220!important}
+.carrier-union{color:#006341!important}
+.carrier-starlink{color:#111!important}
+@media (prefers-color-scheme:dark){
+ .carrier-starlink{color:#f5f5f5!important}
+}
+.carrier-chip{display:inline-block;padding:3px 8px;border-radius:999px;font-weight:800;border:1px solid currentColor}
+
+
+/* v47 carrier-colored map pins */
+.carrier-map-pin{
+  width:22px;
+  height:22px;
+  border-radius:50% 50% 50% 0;
+  transform:rotate(-45deg);
+  border:2px solid #fff;
+  box-shadow:0 1px 5px rgba(0,0,0,.55);
+  position:relative;
+}
+.carrier-map-pin::after{
+  content:'';
+  width:7px;
+  height:7px;
+  border-radius:50%;
+  background:#fff;
+  position:absolute;
+  top:5px;
+  left:5px;
+}
+
+
+/* Compact scan-image preview: uploaded/pasted screenshots must never dominate the page. */
+#scanPreview,
+#preview,
+#imagePreview,
+#scanImagePreview,
+#screenshotPreview,
+.scan-preview img,
+.screenshot-preview img,
+.preview-image {
+  width: 110px !important;
+  max-width: 110px !important;
+  height: 82px !important;
+  max-height: 82px !important;
+  object-fit: contain !important;
+  object-position: center !important;
+  display: block !important;
+  margin: 8px auto !important;
+  border-radius: 8px !important;
+}
+
+/* Also constrain any image inside the Scan tab that is being used as a local preview. */
+#tab-scan img:not(.app-icon):not([data-fullsize]) {
+  max-width: 110px !important;
+  max-height: 82px !important;
+  object-fit: contain !important;
+}
+
+/* Keep preview wrappers compact instead of reserving screenshot-sized space. */
+#tab-scan .image-preview,
+#tab-scan .preview-wrap,
+#tab-scan .screenshot-wrap {
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: 100px !important;
+  overflow: hidden !important;
+}
+
+
+
+/* Official v63 compact Backup page */
+.backup-compact{padding:10px!important;margin:8px 0!important}
+.backup-compact h3{margin:0 0 2px!important}
+.backup-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.backup-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:8px}
+.backup-actions button{padding:8px 6px!important;min-height:36px!important}
+.backup-backend{margin-top:8px;padding:7px 8px;border:1px solid #39435f;border-radius:9px;background:#0f1526}
+.backup-backend summary{cursor:pointer}
+.backup-backend input{padding:8px!important;min-height:36px!important}
+@media(max-width:560px){
+  .backup-actions{grid-template-columns:1fr}
+}
+
+
+/* v64 save-all confirmation */
+.save-all-success{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:10px 12px;
+  margin:8px 0 12px;
+  border-radius:12px;
+  background:#12351f;
+  border:1px solid #22c55e;
+  color:#dcfce7;
+}
+.save-all-success.hidden{display:none}
+.save-all-check{
+  width:34px;
+  height:34px;
+  border-radius:50%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex:0 0 34px;
+  background:#22c55e;
+  color:#052e16;
+  font-size:23px;
+  font-weight:900;
+}
+
 </style>
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+
+<script>
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.getRegistrations().then(rs=>Promise.all(rs.map(r=>r.unregister()))).catch(()=>{});
+}
+</script>
 </head>
 <body>
 
@@ -142,7 +277,7 @@ main, .container, .content{
 <button class="tab" onclick="showTab('registry',this)">Registry</button>
 <button class="tab" onclick="showTab('map',this)">Map</button>
 <button class="tab" onclick="showTab('add',this)">Add/Edit</button>
-<button class="tab" onclick="showTab('backup',this)">Backup</button>
+<button class="tab" onclick="openBackupWithPin(this)">Backup</button>
 </div>
 <div id="pendingChangesBar" class="card hidden" style="position:sticky;top:58px;z-index:8;border-color:#7c5f16">
   <div class="row" style="align-items:center">
@@ -158,12 +293,22 @@ main, .container, .content{
 <section id="tab-lookup">
 <div class="card">
 <h3>Search Towers</h3>
-<p class="muted small">Search by Cell ID/NCI, LTE eNB, 5G gNB, carrier name, tower/site name, PLMN, or band. Searching a carrier shows all towers for that carrier.</p>
+<p class="muted small">Search anything you know about a tower. Tap Add/Edit Info on any result to open that exact tower and add missing data. Matches can come from tower name, carrier, PLMN, LTE/5G, eNB/gNB, Cell ID/NCI, sector/local cell, PCI, TAC, band, bandwidth, status, notes, coordinates, or verification state. Numeric searches also run LTE /256 and 5G /4096 math.</p>
 
 <div class="grid">
 <div>
 <label>Search</label>
-<input id="universalSearch" placeholder="Cell ID, eNB, gNB, T-Mobile, Strata Complex, 310260…">
+<input id="universalSearch" placeholder="Search anything: eNB, Cell ID, carrier, band, TAC, tower name…">
+</div>
+<div>
+<label>Verification</label>
+<select id="searchVerification" onchange="universalLookup()">
+<option value="">All towers</option>
+<option value="unverified">Unverified / Provisional / Unknown status</option>
+<option value="unnamed">Unnamed only</option>
+<option value="verified">Verified only</option>
+</select>
+<div class="small muted">Uses the tower’s current status, including pending Add/Edit changes. Naming is handled separately by “Unnamed only.”</div>
 </div>
 <div>
 <label>Radio filter</label>
@@ -177,6 +322,7 @@ main, .container, .content{
 <label>Carrier filter</label>
 <input id="searchCarrier" list="carrierList" placeholder="All carriers">
 </div>
+
 </div>
 
 <div class="row" style="margin-top:12px">
@@ -184,8 +330,86 @@ main, .container, .content{
 <button class="secondary" onclick="clearUniversalSearch()">Clear</button>
 </div>
 
+
+<div class="row" style="margin-top:8px">
+<button type="button" class="secondary" onclick="document.getElementById('searchVerification').value='unverified';universalLookup()">Show Unverified</button>
+<button type="button" class="secondary" onclick="document.getElementById('searchVerification').value='unnamed';universalLookup()">Show Unnamed</button>
+</div>
 <div id="universalSearchSummary" class="small muted" style="margin-top:10px"></div>
 <div id="universalLookupOut" style="margin-top:12px"></div>
+</div>
+
+<div class="card" style="margin-top:16px">
+<h2>CellMapper Tower Lookup</h2>
+<div class="small muted">
+Enter the carrier, network type, and eNB/gNB. The app builds the correct CellMapper map for that carrier.
+Use 4G LTE for eNB searches, 3G UMTS for NodeB searches, and 5G NR for gNB searches.
+</div>
+<div class="notice small" style="margin-top:10px">
+If a scanned tower is not already in your Registry, the app will simply ask whether you want to add it.
+</div>
+
+
+<div class="grid" style="margin-top:10px">
+<div>
+<label>Carrier</label>
+<select id="cmCarrier" onchange="syncCellMapperPlmn()">
+<option value="STRATA Networks">STRATA Networks</option>
+<option value="T-Mobile">T-Mobile</option>
+<option value="AT&T">AT&T</option>
+<option value="Verizon">Verizon</option>
+<option value="Union Wireless">Union Wireless</option>
+<option value="T-Mobile Starlink">T-Mobile Starlink</option>
+<option value="custom">Other / Future Carrier</option>
+</select>
+</div>
+
+<div>
+<label>PLMN</label>
+<input id="cmPlmn" inputmode="numeric" value="312290" placeholder="312290">
+</div>
+
+<div>
+<label>Network</label>
+<select id="cmRadio">
+<option value="LTE">4G LTE</option>
+<option value="UMTS">3G UMTS</option>
+<option value="NR">5G NR</option>
+</select>
+</div>
+
+<div>
+<label>eNB / gNB</label>
+<input id="cmTowerId" inputmode="numeric" placeholder="1038">
+</div>
+</div>
+
+<div class="row" style="margin-top:10px">
+<button type="button" onclick="openCellMapperTowerSearch()">Open CellMapper</button>
+<button type="button" class="secondary" onclick="previewCellMapperSearch()">Preview Search</button>
+</div>
+
+<div id="cmSearchPreview" style="margin-top:10px"></div>
+<div class="card" style="margin-top:12px">
+<h3>CellMapper Verified Autofill</h3>
+<div class="small muted">
+Tower Registry can check CellMapper in the background using the selected carrier, LTE/3G/5G, and tower ID. Green verified towers can automatically fill the tower ID and coordinates into Add/Edit.
+</div>
+<div class="row" style="margin-top:8px">
+<button type="button" onclick="runBackgroundCellMapperLookup()">Run Background Lookup</button>
+<button type="button" class="secondary" onclick="fillBackgroundCellMapperIntoForm()">Fill Add/Edit</button>
+</div>
+
+<div class="notice small" style="margin-top:8px">
+  <b>CellMapper status:</b> Green = Verified, red = Unverified, and no matching tower = Not in CellMapper.
+</div>
+
+<div id="cmBackgroundStatus" class="small muted" style="margin-top:8px"></div>
+<div id="cmBackgroundResult" style="margin-top:8px"></div>
+</div>
+
+
+
 </div>
 </section>
 
@@ -260,6 +484,16 @@ main, .container, .content{
 </div>
 <div id="towerMap" style="margin-top:12px"></div>
 <div id="mapStatus" class="small muted mapHint"></div>
+
+<div class="small muted" style="margin-top:8px">
+Map pin colors:
+<span class="carrier-brand carrier-tmobile">● T-Mobile</span> ·
+<span class="carrier-brand carrier-att">● AT&amp;T</span> ·
+<span class="carrier-brand carrier-verizon">● Verizon</span> ·
+<span class="carrier-brand carrier-strata">● STRATA</span> ·
+<span class="carrier-brand carrier-union">● Union</span>
+</div>
+
 <div id="scanMapPlacementControls" class="hidden" style="margin-top:8px">
 <button class="danger" onclick="cancelScannedTowerPlacement()">Cancel Scanned Tower Placement</button>
 </div>
@@ -354,19 +588,32 @@ main, .container, .content{
 </section>
 
 <section id="tab-backup" class="hidden">
-<div class="card">
-<h3>Backup & Transfer</h3>
-<p class="muted">Changes are stored locally on this device. Export a backup before clearing browser data or moving to another device.</p>
-<div class="row">
-<button onclick="exportRegistry()">Export Registry JSON</button>
-<button class="secondary" onclick="document.getElementById('importFile').click()">Import Registry JSON</button>
-<input id="importFile" type="file" accept=".json,application/json" class="hidden" onchange="importRegistry(event)">
-</div>
-<div style="margin-top:10px"><button class="danger" onclick="resetRegistry()">Reset to Built-in Registry</button></div>
-<div style="margin-top:10px"><button class="secondary" onclick="forgetTrustedDevice()">Require PIN Again on This Device</button></div>
+<div class="card backup-compact">
+  <div class="backup-head">
+    <div>
+      <h3>Backup</h3>
+      <div class="small muted">Export, import, reset, or configure the CellMapper backend.</div>
+    </div>
+  </div>
 
+  <div class="backup-actions">
+    <button onclick="exportRegistry()">Export JSON</button>
+    <button class="secondary" onclick="document.getElementById('importFile').click()">Import JSON</button>
+    <input id="importFile" type="file" accept=".json,application/json" class="hidden" onchange="importRegistry(event)">
+    <button class="danger" onclick="resetRegistry()">Reset Registry</button>
+  </div>
+
+  <details class="backup-backend">
+    <summary><b>CellMapper Backend</b></summary>
+    <div class="small muted" style="margin:6px 0">Saved only on this device.</div>
+    <input id="remoteBackendUrl" placeholder="https://your-backend-site.netlify.app">
+    <div class="backup-actions" style="margin-top:6px">
+      <button type="button" onclick="saveRemoteBackendUrl()">Save URL</button>
+      <button type="button" class="secondary" onclick="testRemoteBackend()">Check Backend</button>
+    </div>
+    <div id="remoteBackendStatus" class="small muted" style="margin-top:5px"></div>
+  </details>
 </div>
-<div class="notice small" style="margin-top:12px"><b>PIN note:</b> This app requires PIN 159357 only the first time on each device/browser. After successful entry, that device is trusted in local storage until its site data is cleared or trust is manually revoked. This is still an app-level lock only; GitHub Pages is static hosting.</div>
 </section>
 </div>
 <datalist id="carrierList"></datalist>
@@ -391,7 +638,19 @@ function loadLocal(){const x=localStorage.getItem('masterTowerRegistry'); if(x){
 
 
 
+
 const FIXED_APP_PIN='159357';
+
+function openBackupWithPin(btn){
+  const entered=prompt('Enter PIN to open Backup');
+  if(entered===null)return;
+  if(String(entered).trim()!==FIXED_APP_PIN){
+    alert('Incorrect PIN.');
+    return;
+  }
+  showTab('backup',btn);
+}
+
 const DEVICE_TRUST_KEY='towerRegistryDeviceTrusted_v30';
 
 function showAppLock(){
@@ -428,12 +687,7 @@ function unlockApp(){
  }
 }
 
-function forgetTrustedDevice(){
- if(confirm('Require the PIN again on this device?')){
-   localStorage.removeItem(DEVICE_TRUST_KEY);
-   showAppLock();
- }
-}
+
 
 document.addEventListener('DOMContentLoaded',()=>{
  const btn=document.getElementById('lockBtn');
@@ -553,9 +807,9 @@ function renderTowerMap(){
    if(!validCoord(lat,-90,90)||!validCoord(lon,-180,180))continue;
 
    const editing=activeMapEditRecord && keyOf(activeMapEditRecord)===keyOf(r);
-   const marker=L.marker([lat,lon],{draggable:!!editing}).addTo(towerMap);
+   const marker=L.marker([lat,lon],{draggable:!!editing,icon:carrierMapIcon(r)}).addTo(towerMap);
    marker.bindPopup(
-     `<b>${esc(r.site)}</b><br>${esc(r.carrier)} · ${esc(r.radio)}<br>`+
+     `<b>${esc(r.site)}</b><br>${carrierBrandHtml(r.carrier,recordPlmn(r),true)} · ${esc(r.radio)}<br>`+
      `${r.eNB?'eNB '+esc(r.eNB):'gNB '+esc(r.gNB)}<br>${esc(er.bands||r.bands||'bands unknown')}`+
      `${editing?'<br><b>Drag this pin to move tower</b>':''}`
    );
@@ -592,7 +846,7 @@ function stageTowerLocationChange(record,lat,lon,source){
  if(activeMapEditMarker){
    activeMapEditMarker.setLatLng([Number(lat),Number(lon)]);
  }else{
-   activeMapEditMarker=L.marker([Number(lat),Number(lon)],{draggable:true}).addTo(towerMap);
+   activeMapEditMarker=L.marker([Number(lat),Number(lon)],{draggable:true,icon:carrierMapIcon(record)}).addTo(towerMap);
    activeMapEditMarker.on('dragend',ev=>{
      const ll=ev.target.getLatLng();
      stageTowerLocationChange(record,ll.lat,ll.lng,'drag');
@@ -854,35 +1108,107 @@ function refreshPendingChangesUI(){
  }
 }
 
-function saveAllPendingChanges(){
- if(!DB)return;
- const items=Object.values(pendingTowerChanges);
- if(!items.length){
-   toast('No pending changes.');
-   return;
- }
 
- for(const item of items){
-   const idx=DB.records.findIndex(r=>keyOf(r)===item.key);
-   if(idx>=0){
-     if(item.changes.__delete){
-       DB.records.splice(idx,1);
-     }else{
-       const c={...item.changes};
-       delete c.__delete;
-       DB.records[idx]={...DB.records[idx],...c};
-     }
-   }
- }
 
- pendingTowerChanges={};
- saveLocal();
- renderRegistry();
- refreshCarrierList();
- if(towerMap)renderTowerMap();
- refreshPendingChangesUI();
- toast('All pending changes saved.');
+function showSaveAllSuccess(message){
+  let box=document.getElementById('saveAllSuccess');
+  if(!box){
+    box=document.createElement('div');
+    box.id='saveAllSuccess';
+    box.className='save-all-success';
+    const bar=document.getElementById('pendingChangesBar');
+    if(bar && bar.parentNode){
+      bar.parentNode.insertBefore(box,bar.nextSibling);
+    }else{
+      document.querySelector('.wrap')?.prepend(box);
+    }
+  }
+
+  box.innerHTML=`
+    <div class="save-all-check">✓</div>
+    <div>
+      <b>Everything Saved</b>
+      <div class="small">${esc(String(message||'All changes were saved.'))}</div>
+    </div>
+  `;
+  box.classList.remove('hidden');
+
+  clearTimeout(window.__saveAllSuccessTimer);
+  window.__saveAllSuccessTimer=setTimeout(()=>{
+    box.classList.add('hidden');
+  },5000);
+
+  try{toast('Everything saved ✓');}catch(e){}
 }
+
+
+function saveAllPendingChanges(){
+  const entries=Object.values(pendingTowerChanges||{});
+  const pendingCount=entries.length;
+
+  if(!pendingCount){
+    refreshPendingChangesUI();
+    showSaveAllSuccess('Everything is already saved.');
+    return;
+  }
+
+  try{
+    let saved=0;
+
+    for(const item of entries){
+      if(!item)continue;
+      const key=String(item.key||'');
+      const original=item.original||{};
+      const changes=item.changes||{};
+
+      let idx=(DB.records||[]).findIndex(r=>pendingKey(r)===key);
+      if(idx<0){
+        idx=(DB.records||[]).findIndex(r=>
+          String(r.carrier||'')===String(original.carrier||'') &&
+          String(r.radio||'')===String(original.radio||'') &&
+          String(r.eNB||r.gNB||'')===String(original.eNB||original.gNB||'')
+        );
+      }
+
+      if(idx>=0){
+        DB.records[idx]={...DB.records[idx],...changes};
+        saved++;
+      }
+    }
+
+    saveLocal();
+
+    pendingTowerChanges={};
+    refreshPendingChangesUI();
+
+    window._currentUnknownScanFields=null;
+    window._unknownScanFormSignature=null;
+
+    const banner=document.getElementById('unknownScanBanner');
+    const actions=document.getElementById('unknownScanActions');
+    if(banner){banner.classList.add('hidden');banner.innerHTML='';}
+    if(actions){actions.classList.add('hidden');actions.innerHTML='';}
+
+    try{clearForm();}catch(e){}
+    try{clearScanPage();}catch(e){}
+
+    const cmStatus=document.getElementById('cmBackgroundStatus');
+    const cmResult=document.getElementById('cmBackgroundResult');
+    if(cmStatus)cmStatus.textContent='';
+    if(cmResult)cmResult.innerHTML='';
+    if(typeof cmBackgroundData!=='undefined')cmBackgroundData=null;
+
+    renderRegistry();
+ refreshUniversalLookupIfPresent();
+    if(towerMap)renderTowerMap();
+
+    showSaveAllSuccess(`✓ ${saved} change${saved===1?'':'s'} saved successfully.`);
+  }catch(e){
+    alert('Could not save all changes: '+String(e&&e.message||e));
+  }
+}
+
+
 
 function discardAllPendingChanges(){
  if(!Object.keys(pendingTowerChanges).length){
@@ -898,23 +1224,1071 @@ function discardAllPendingChanges(){
 }
 
 fetch('registry.json').then(r=>r.json()).then(j=>{
- BUILTIN=j; DB=loadLocal()||JSON.parse(JSON.stringify(j)); renderRegistry(); refreshCarrierList(); syncPlmn();
+ BUILTIN=j; DB=loadLocal()||JSON.parse(JSON.stringify(j)); renderRegistry();
+ refreshUniversalLookupIfPresent(); refreshCarrierList(); syncPlmn();
 }).catch(()=>{document.getElementById('out').innerHTML='<div class="card unknown">Could not load registry.json.</div>'});
 
 function signalRating(kind,v){
  if(v===''||v===null||Number.isNaN(Number(v))) return ['Unknown','⚪'];
  v=Number(v);
+ // PowerfulSignal reference thresholds requested by the user.
  if(kind==='rsrp'){
-   if(v>=-80)return ['Excellent','🟢']; if(v>=-95)return ['Good','🟢']; if(v>=-105)return ['Fair','🟡']; if(v>=-115)return ['Poor','🟠']; return ['Very Poor','🔴'];
+   if(v>=-89)return ['Excellent','🟢'];
+   if(v>=-104)return ['Good','🟡'];
+   if(v>=-114)return ['Fair','🟠'];
+   if(v>=-124)return ['Poor','🔴'];
+   return ['No Signal','⚫'];
  }
  if(kind==='rsrq'){
-   if(v>=-10)return ['Excellent','🟢']; if(v>=-15)return ['Good','🟢']; if(v>=-20)return ['Fair','🟡']; return ['Poor','🔴'];
+   if(v>=-9)return ['Excellent','🟢'];
+   if(v>=-14)return ['Good','🟡'];
+   if(v>=-19)return ['Fair','🟠'];
+   return ['Poor','🔴'];
  }
  if(kind==='snr'){
-   if(v>=20)return ['Excellent','🟢']; if(v>=13)return ['Good','🟢']; if(v>=0)return ['Fair','🟡']; return ['Poor','🔴'];
+   if(v>=11)return ['Excellent','🟢'];
+   if(v>=6)return ['Good','🟡'];
+   if(v>=0)return ['Fair','🟠'];
+   return ['Poor','🔴'];
  }
  return ['Unknown','⚪'];
 }
+
+function carrierMapColor(name,plmn){
+ const n=String(name||'').toLowerCase();
+ const p=String(plmn||'').replace(/\D/g,'');
+ if(p==='310830'||n.includes('starlink'))return '#111111';
+ if(p==='310260'||n.includes('t-mobile')||n.includes('tmobile'))return '#E20074';
+ if(p==='310410'||n.includes('at&t')||n.includes('att'))return '#009FDB';
+ if(p==='311480'||n.includes('verizon'))return '#CD040B';
+ if(p==='312290'||n.includes('strata'))return '#F58220';
+ if(p==='310020'||p==='31220'||n.includes('union wireless'))return '#006341';
+ return '#6B7280';
+}
+
+function carrierMapIcon(record){
+ const plmn=(typeof registryPlmnForRecord==='function') ? registryPlmnForRecord(record) : (record.plmn||'');
+ const color=carrierMapColor(record.carrier,plmn);
+ return L.divIcon({
+   className:'',
+   html:`<div class="carrier-map-pin" style="background:${color}"></div>`,
+   iconSize:[26,32],
+   iconAnchor:[13,30],
+   popupAnchor:[0,-28]
+ });
+}
+
+function carrierBrandClass(name,plmn){
+ const n=String(name||'').toLowerCase();
+ const p=String(plmn||'').replace(/\D/g,'');
+ if(p==='310830'||n.includes('starlink'))return 'carrier-starlink';
+ if(p==='310260'||n.includes('t-mobile')||n.includes('tmobile'))return 'carrier-tmobile';
+ if(p==='310410'||n.includes('at&t')||n.includes('att'))return 'carrier-att';
+ if(p==='311480'||n.includes('verizon'))return 'carrier-verizon';
+ if(p==='312290'||n.includes('strata'))return 'carrier-strata';
+ if(p==='310020'||p==='31220'||n.includes('union wireless'))return 'carrier-union';
+ return '';
+}
+function carrierBrandHtml(name,plmn,chip=false){
+ const cls=carrierBrandClass(name,plmn);
+ return `<span class="carrier-brand ${cls} ${chip?'carrier-chip':''}">${esc(name||'Unknown')}</span>`;
+}
+
+function registryPlmnForRecord(r){
+ if(r.plmn)return String(r.plmn);
+ if(DB && DB.plmns){
+   const found=Object.entries(DB.plmns).find(([p,name])=>name===r.carrier);
+   if(found)return found[0];
+ }
+ return '';
+}
+
+
+function openSearchResultInEdit(k){
+ const base=DB.records.find(r=>keyOf(r)===k);
+ if(!base)return;
+
+ // If this record already has pending edits, load the effective preview.
+ const r=(typeof getEffectiveRecord==='function') ? getEffectiveRecord(base) : base;
+
+ showTab('add',document.querySelectorAll('.tab')[4]);
+ if(typeof clearForm==='function')clearForm();
+
+ const plmn=(typeof registryPlmnForRecord==='function') ? registryPlmnForRecord(r) :
+   (r.plmn || ((DB&&DB.plmns)?(Object.entries(DB.plmns).find(([p,n])=>n===r.carrier)?.[0]||''):''));
+
+ document.getElementById('fCarrier').value=r.carrier||'';
+ document.getElementById('fPlmn').value=plmn||'';
+ document.getElementById('fPlmn').dataset.auto='0';
+ document.getElementById('fRadio').value=r.radio||'LTE';
+ if(typeof updateIdLabel==='function')updateIdLabel();
+
+ document.getElementById('fId').value=r.eNB||r.gNB||'';
+ document.getElementById('fSite').value=r.site||'';
+ document.getElementById('fStatus').value=r.status||'confirmed';
+ document.getElementById('fBands').value=r.bands||'';
+ document.getElementById('fBandwidth').value=r.bandwidth||'';
+ document.getElementById('fCell').value=r.cell_id||'';
+ document.getElementById('fLocal').value=r.local_cell||'';
+ document.getElementById('fPci').value=r.pci||'';
+ document.getElementById('fTac').value=r.tac||'';
+
+ if(document.getElementById('fLat'))document.getElementById('fLat').value=r.latitude||'';
+ if(document.getElementById('fLon'))document.getElementById('fLon').value=r.longitude||'';
+ if(document.getElementById('fNotes'))document.getElementById('fNotes').value=r.notes||'';
+
+ document.getElementById('editKey').value=keyOf(base);
+ document.getElementById('formTitle').textContent='Edit Tower / Add Information';
+
+ const auto=document.getElementById('idAutofillStatus');
+ if(auto){
+   auto.textContent=`Editing ${r.site||'tower'} · ${r.carrier||''} ${r.radio||''} ${r.eNB?'eNB '+r.eNB:'gNB '+r.gNB}. Add or change any missing information, then use the normal save workflow.`;
+ }
+
+ const dup=document.getElementById('duplicateWarn');
+ if(dup)dup.innerHTML='';
+
+ window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function universalRecordCard(r,matchText){
+ const idLabel=r.radio==='LTE'?'eNB':'gNB';
+ const idValue=r.eNB||r.gNB||'Unknown';
+ return `<div class="card result ${r.status==='confirmed'?'ok':r.status==='provisional'?'prov':'unknown'}">
+   <h2>${esc(r.site||'UNMAPPED / UNKNOWN ?')}</h2>
+   <div class="kv">
+     <div class="label">Carrier</div><div>${carrierBrandHtml(r.carrier,registryPlmnForRecord(r),true)}</div>
+     <div class="label">PLMN</div><div>${esc(registryPlmnForRecord(r)||'Unknown')}</div>
+     <div class="label">LTE/5G</div><div>${esc(r.radio||'Unknown')}</div>
+     <div class="label">${idLabel}</div><div>${esc(idValue)}</div>
+     <div class="label">Bands</div><div>${esc(r.bands||'Unknown')}</div>
+     <div class="label">Bandwidth</div><div>${esc(r.bandwidth||'Unknown')}</div>
+     <div class="label">Saved Cell ID/NCI</div><div>${esc(r.cell_id||'Unknown')}</div>
+   </div>
+   ${matchText?`<div style="margin-top:10px"><b>Match:</b> ${esc(matchText)}</div>`:''}
+   ${r.notes?`<div class="small muted" style="margin-top:8px">${esc(r.notes)}</div>`:''}
+   <div class="row" style="margin-top:12px"><button type="button" onclick='openSearchResultInEdit(${JSON.stringify(keyOf(r))})'>Add/Edit Info</button></div>
+ </div>`;
+}
+
+
+function isUnnamedTower(r){
+ const site=String(r.site||'').trim().toLowerCase();
+ if(!site)return true;
+ return site==='unknown' ||
+        site==='unnamed' ||
+        site.includes('unmapped') ||
+        site.endsWith('?') ||
+        site.includes('unknown site');
+}
+
+function isUnverifiedTower(r){
+ // v73: Verification and naming are separate concepts.
+ // "Unnamed only" already has its own filter, so a confirmed tower must not be
+ // forced back into Unverified merely because its site name is unknown or ends in ?.
+ const status=String(r.status||'').trim().toLowerCase();
+ return status!=='confirmed';
+}
+
+function effectiveSearchRecords(){
+ if(!DB || !Array.isArray(DB.records))return [];
+ return DB.records
+   .map(r=>(typeof getEffectiveRecord==='function') ? getEffectiveRecord(r) : r)
+   .filter(r=>r && !r.__delete);
+}
+
+// v74: Search Towers results are a live view of the CURRENT registry state.
+// Any Add/Edit or pending-change action must immediately re-run the active filter.
+function refreshUniversalLookupIfPresent(){
+ const out=document.getElementById('universalLookupOut');
+ const verification=document.getElementById('searchVerification');
+ if(!out || !verification || typeof universalLookup!=='function')return;
+ try{ universalLookup(); }catch(e){ console.warn('Search Towers refresh failed',e); }
+}
+
+function universalLookup(){
+ if(!DB)return;
+
+ const input=document.getElementById('universalSearch');
+ const out=document.getElementById('universalLookupOut');
+ const summary=document.getElementById('universalSearchSummary');
+ const raw=(input?.value||'').trim();
+ const q=raw.toLowerCase();
+ const radioFilter=document.getElementById('searchRadio')?.value||'';
+ const carrierFilter=(document.getElementById('searchCarrier')?.value||'').trim().toLowerCase();
+ const verificationFilter=document.getElementById('searchVerification')?.value||'';
+
+ const found=[];
+ const meta=new Map();
+
+ function allowed(r){
+   if(radioFilter && r.radio!==radioFilter)return false;
+   if(carrierFilter && !String(r.carrier||'').toLowerCase().includes(carrierFilter))return false;
+   if(verificationFilter==='unverified' && !isUnverifiedTower(r))return false;
+   if(verificationFilter==='unnamed' && !isUnnamedTower(r))return false;
+   if(verificationFilter==='verified' && isUnverifiedTower(r))return false;
+   return true;
+ }
+
+ function add(r,text){
+   if(!r||!allowed(r))return;
+   const k=keyOf(r);
+   if(!found.some(x=>keyOf(x)===k))found.push(r);
+   if(text)meta.set(k,text);
+ }
+
+ // Text fields, including direct saved IDs.
+ // v73: use the effective preview record so Add/Edit changes are reflected here
+ // immediately, even before "Save All Changes" commits them to DB.records.
+ for(const baseRecord of DB.records){
+   const r=(typeof getEffectiveRecord==='function') ? getEffectiveRecord(baseRecord) : baseRecord;
+   if(!r || r.__delete || !allowed(r))continue;
+
+   const keywordUnverified=['unverified','unverified tower','unknown','unknown tower','provisional'].includes(q);
+   const keywordUnnamed=['unnamed','unnamed tower','no name','unmapped'].includes(q);
+
+   if(keywordUnverified){
+     if(isUnverifiedTower(r))add(r,'Unverified / provisional / unknown record');
+     continue;
+   }
+   if(keywordUnnamed){
+     if(isUnnamedTower(r))add(r,'Unnamed / unmapped record');
+     continue;
+   }
+
+   // Build one broad searchable text index from essentially every useful tower field.
+   const searchable=[
+     r.site,
+     r.carrier,
+     registryPlmnForRecord(r),
+     r.radio,
+     r.eNB,
+     r.gNB,
+     r.cell_id,
+     r.local_cell,
+     r.pci,
+     r.tac,
+     r.bands,
+     r.bandwidth,
+     r.status,
+     r.notes,
+     r.latitude,
+     r.longitude,
+     keyOf(r)
+   ].map(v=>String(v||'').toLowerCase());
+
+   // Add useful aliases so natural searches work.
+   if(r.radio==='LTE'){
+     searchable.push('lte','4g','enb','eci','cell id','cellid');
+   }
+   if(r.radio==='5G'){
+     searchable.push('5g','nr','gnb','nci','cell id','cellid');
+   }
+   if(isUnverifiedTower(r)){
+     searchable.push('unverified','unknown','provisional','needs verification');
+   }
+   if(isUnnamedTower(r)){
+     searchable.push('unnamed','unmapped','no name');
+   }
+
+   const hay=searchable.join(' | ');
+
+   // Split multi-word searches into tokens. Every token must occur somewhere
+   // in the record, so "t-mobile n41" or "strata 1070" works naturally.
+   const tokens=q.split(/\s+/).filter(Boolean);
+   if(!tokens.length || tokens.every(t=>hay.includes(t))){
+     add(r,'Matched Search Towers fields ✅');
+   }
+ }
+
+ if(/^\d+$/.test(raw)){
+   const n=BigInt(raw);
+
+   // Direct LTE eNB.
+   effectiveSearchRecords().filter(r=>r.radio==='LTE' && String(r.eNB||'')===raw)
+     .forEach(r=>add(r,`Direct LTE eNB ${raw} match ✅`));
+
+   // Direct 5G gNB.
+   effectiveSearchRecords().filter(r=>r.radio==='5G' && String(r.gNB||'')===raw)
+     .forEach(r=>add(r,`Direct 5G gNB ${raw} match ✅`));
+
+   // Exact stored Cell ID/NCI.
+   effectiveSearchRecords().filter(r=>String(r.cell_id||'')===raw)
+     .forEach(r=>add(r,`Exact saved Cell ID/NCI ${raw} match ✅`));
+
+   // LTE Cell ID -> eNB + sector.
+   const enb=(n/256n).toString();
+   const sector=(n%256n).toString();
+   effectiveSearchRecords().filter(r=>r.radio==='LTE' && String(r.eNB||'')===enb)
+     .forEach(r=>add(r,
+       `LTE Cell ID math: ${raw} // 256 = eNB ${enb}, sector ${sector}. Reverse: ${enb} × 256 + ${sector} = ${(BigInt(enb)*256n+BigInt(sector)).toString()} ✅`
+     ));
+
+   // 5G NCI -> gNB + local cell using current 12-bit interpretation.
+   const gnb=(n/4096n).toString();
+   const local=(n%4096n).toString();
+   effectiveSearchRecords().filter(r=>r.radio==='5G' && String(r.gNB||'')===gnb)
+     .forEach(r=>add(r,
+       `5G NCI /4096 ?: ${raw} // 4096 = gNB ${gnb} ?, local ${local} ?. Reverse: ${gnb} × 4096 + ${local} = ${(BigInt(gnb)*4096n+BigInt(local)).toString()} ✅`
+     ));
+ }
+
+ found.sort((a,b)=>
+   String(a.carrier||'').localeCompare(String(b.carrier||'')) ||
+   String(a.site||'').localeCompare(String(b.site||''))
+ );
+
+ if(summary)summary.textContent=`${found.length} matching registry record${found.length===1?'':'s'}.`;
+
+ if(!found.length){
+   if(/^\d+$/.test(raw)){
+     const n=BigInt(raw);
+     const enb=(n/256n).toString(),sector=(n%256n).toString();
+     const gnb=(n/4096n).toString(),local=(n%4096n).toString();
+     out.innerHTML=`<div class="card result unknown">
+       <h2>UNMAPPED / UNKNOWN ?</h2>
+       <div>No direct eNB/gNB, saved Cell ID/NCI, or derived registry match was found.</div>
+       <div style="margin-top:8px"><b>LTE interpretation:</b> eNB ${esc(enb)}, sector ${esc(sector)}</div>
+       <div style="margin-top:6px"><b>5G interpretation ?:</b> gNB ${esc(gnb)} ?, local ${esc(local)} ?</div>
+     </div>`;
+   }else{
+     out.innerHTML='<div class="notice">No matching registry records.</div>';
+   }
+   return;
+ }
+
+ out.innerHTML=found.map(r=>universalRecordCard(r,meta.get(keyOf(r))||'')).join('');
+}
+
+function clearUniversalSearch(){
+ const q=document.getElementById('universalSearch');
+ const rf=document.getElementById('searchRadio');
+ const vf=document.getElementById('searchVerification');
+ const cf=document.getElementById('searchCarrier');
+ const out=document.getElementById('universalLookupOut');
+ const summary=document.getElementById('universalSearchSummary');
+ if(q)q.value='';
+ if(rf)rf.value='';
+ if(vf)vf.value='';
+ if(cf)cf.value='';
+ if(out)out.innerHTML='';
+ if(summary)summary.textContent='';
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+ const q=document.getElementById('universalSearch');
+ const cf=document.getElementById('searchCarrier');
+ const rf=document.getElementById('searchRadio');
+ if(q)q.addEventListener('keydown',e=>{if(e.key==='Enter')universalLookup();});
+ if(cf)cf.addEventListener('keydown',e=>{if(e.key==='Enter')universalLookup();});
+ if(rf)rf.addEventListener('change',()=>{if(q&&q.value.trim())universalLookup();});
+ const vf=document.getElementById('searchVerification');
+ if(vf)vf.addEventListener('change',()=>universalLookup());
+});
+
+
+const CELLMAPPER_CARRIERS={
+ 'STRATA Networks':{plmn:'312290'},
+ 'T-Mobile':{plmn:'310260'},
+ 'AT&T':{plmn:'310410'},
+ 'Verizon':{plmn:'311480'},
+ 'Union Wireless':{plmn:'310020'},
+ 'T-Mobile Starlink':{plmn:'310830'}
+};
+
+
+function carrierNameFromPlmn(plmn){
+ const p=String(plmn||'').replace(/\D/g,'');
+ if(DB && DB.plmns && DB.plmns[p])return DB.plmns[p];
+ const map={
+   '310260':'T-Mobile',
+   '310830':'T-Mobile Starlink',
+   '312290':'STRATA Networks',
+   '310410':'AT&T',
+   '311480':'Verizon',
+   '310020':'Union Wireless',
+   '31220':'Union Wireless'
+ };
+ return map[p]||'custom';
+}
+
+function setCellMapperPanelFromScan(fields,registryMatch){
+ // v75: no automatic action for missing towers.
+ // CellMapper lookup remains available manually from Lookup.
+ return;
+}
+
+
+let cmBackgroundData=null;
+let cmFullDiagnosticData=null;
+
+function cmDiagnosticPayload(){
+ return cmFullDiagnosticData || {};
+}
+function cmDiagnosticFilename(){
+ const d=cmDiagnosticPayload();
+ const plmn=String(document.getElementById('cmPlmn')?.value||d.plmn||'unknown').replace(/[^0-9A-Za-z_-]/g,'');
+ const radio=String(document.getElementById('cmRadio')?.value||d.radio||'unknown').replace(/[^0-9A-Za-z_-]/g,'');
+ const tower=String(document.getElementById('cmTowerId')?.value||d.towerId||d.exactSiteID||'unknown').replace(/[^0-9A-Za-z_-]/g,'');
+ return `CellMapper_${plmn}_${radio}_${tower}_diagnostic.json`;
+}
+async function copyCellMapperDiagnostic(){
+ const text=JSON.stringify(cmDiagnosticPayload(),null,2);
+ try{ await navigator.clipboard.writeText(text); alert('Full CellMapper diagnostic copied.'); }
+ catch(e){ prompt('Copy the full diagnostic below:',text); }
+}
+function downloadCellMapperDiagnostic(){
+ const text=JSON.stringify(cmDiagnosticPayload(),null,2);
+ const blob=new Blob([text],{type:'application/json'});
+ const a=document.createElement('a');
+ a.href=URL.createObjectURL(blob); a.download=cmDiagnosticFilename();
+ document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+
+
+
+function cmDiagText(v,fallback='Not returned'){
+ if(v===undefined||v===null||v==='')return fallback;
+ if(Array.isArray(v))return v.length?JSON.stringify(v):'[]';
+ if(typeof v==='object')return JSON.stringify(v);
+ return String(v);
+}
+
+function cmDiagPretty(v){
+ try{return JSON.stringify(v,null,2);}
+ catch{return String(v??'');}
+}
+
+function cmShortUrl(v){
+ const s=String(v||'');
+ if(!s)return 'None';
+ try{
+   const u=new URL(s);
+   return u.hostname+u.pathname+(u.search?u.search.slice(0,160):'');
+ }catch{
+   return s.length>220?s.slice(0,220)+'…':s;
+ }
+}
+
+function renderCellMapperDiagnostics(data,towerId){
+ const raw=data?.raw||{};
+ const mapLat=data?.mapCenterLatitude??raw?.mapCenterLatitude??'';
+ const mapLon=data?.mapCenterLongitude??raw?.mapCenterLongitude??'';
+ const towerLat=data?.towerLatitude??raw?.latitude??'';
+ const towerLon=data?.towerLongitude??raw?.longitude??'';
+ const candidateFields=data?.candidateFields??raw?.candidateFields??[];
+ const candidatePreview=data?.candidatePreview??raw?.candidatePreview??null;
+ const matched=data?.matchedNetworkResponses||[];
+ const top=data?.topNetworkResponses||[];
+ const panelPreview=data?.panelTextPreview??raw?.panelTextPreview??'';
+
+ const sourceUrl=data?.networkSourceUrl||raw?.networkSourceUrl||'';
+ const getTowersPath=data?.getTowersPath||raw?.getTowersTrace?.path||'';
+ const getTowersFields=data?.getTowersFields||raw?.getTowersTrace?.fields||[];
+ const getTowersObjectPreview=data?.getTowersObjectPreview||raw?.getTowersTrace?.preview||null;
+
+ const section=(title,val,empty='Not returned')=>{
+   const has=!(val===undefined||val===null||val===false||val===''||(Array.isArray(val)&&val.length===0));
+   return `<details style="margin-top:10px">
+     <summary><b>${esc(title)}</b></summary>
+     <pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto">${esc(has?cmDiagPretty(val):empty)}</pre>
+   </details>`;
+ };
+
+ const sourceBlock=sourceUrl
+   ? `<div class="label">Network source</div><div style="overflow-wrap:anywhere">${esc(cmShortUrl(sourceUrl))}</div>`
+   : `<div class="label">Network source</div><div>None</div>`;
+
+ const candidateFieldText=Array.isArray(candidateFields)&&candidateFields.length
+   ? candidateFields.join(', ')
+   : 'None';
+
+ const matchedRows=matched.length
+   ? matched.map((m,i)=>`<div class="notice small" style="margin-top:6px">
+       <b>#${i+1} score ${esc(String(m.score??0))}</b><br>
+       ${esc(cmShortUrl(m.url||''))}<br>
+       Fields: ${esc((m.candidateFields||[]).join(', ')||'None')}
+     </div>`).join('')
+   : '<div class="small muted">No matching network response objects.</div>';
+
+ const topRows=top.length
+   ? top.slice(0,8).map((m,i)=>`<div class="small" style="margin-top:5px;overflow-wrap:anywhere">
+       ${i+1}. score ${esc(String(m.score??0))} · ${m.matched?'MATCH':'no match'} · ${esc(cmShortUrl(m.url||''))}
+     </div>`).join('')
+   : '<div class="small muted">No captured response summary available.</div>';
+
+ return `<div class="card" style="margin-top:12px;border-left:4px solid #7c9cff">
+   <h3>v59 </h3>
+   <div class="card" style="margin:10px 0">
+    <h3 style="margin-top:0">Compact Tower Summary</h3>
+    <div class="kv">
+     <div class="label">Tower</div><div>${esc(String(towerId||data?.towerId||''))}</div>
+     <div class="label">Exact match</div><div>${data?.exactSiteMatched?'YES ✓':'NO'}</div>
+     <div class="label">getTowers</div><div>${data?.getTowersMatched?'YES ✓':'NO'}</div>
+     <div class="label">Bands</div><div>${esc(cmDiagText(data?.getTowersBandNumbersPreview,'Not returned'))}</div>
+     <div class="label">Channels</div><div>${esc(cmDiagText(data?.getTowersChannelsPreview,'Not returned'))}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
+     
+     
+    </div>
+   </div>
+   <div class="small muted" style="margin-bottom:10px">
+     Test diagnostics only. getSite coordinates remain separate from map-center coordinates. getTowers is traced independently.
+   </div>
+
+   <div class="kv">
+     <div class="label">Requested Tower</div><div>${esc(String(towerId||data?.towerId||''))}</div>
+     <div class="label">Backend version</div><div>${esc(String(data?.version||'Unknown'))}</div>
+     <div class="label">Network matched</div><div>${data?.networkMatched?'YES ✓':'NO'}</div>
+     <div class="label">Exact site matched</div><div>${data?.exactSiteMatched?'YES ✓':'NO'}</div>
+     <div class="label">Exact site ID</div><div>${esc(String(data?.exactSiteID||''))}</div>
+     <div class="label">Network score</div><div>${esc(String(data?.networkScore??0))}</div>
+     ${sourceBlock}
+     <div class="label">Captured responses</div><div>${esc(String(data?.capturedNetworkResponses??0))}</div>
+
+     <div class="label">Tower latitude</div><div>${esc(cmDiagText(towerLat))}</div>
+     <div class="label">Tower longitude</div><div>${esc(cmDiagText(towerLon))}</div>
+     <div class="label">Map-center latitude</div><div>${esc(cmDiagText(mapLat))}</div>
+     <div class="label">Map-center longitude</div><div>${esc(cmDiagText(mapLon))}</div>
+
+     <div class="label">Panel found</div><div>${data?.panelFound?'YES ✓':'NO'}</div>
+     <div class="label">Panel score</div><div>${esc(String(data?.panelScore??0))}</div>
+     <div class="label">Candidate fields</div><div style="overflow-wrap:anywhere">${esc(candidateFieldText)}</div>
+
+     <div class="label">getSite matched</div><div>${data?.getSiteMatched?'YES ✓':'NO'}</div>
+     <div class="label">getTowers matched</div><div>${data?.getTowersMatched?'YES ✓':'NO'}</div>
+     <div class="label">getTowers score</div><div>${esc(String(data?.getTowersScore??0))}</div>
+     <div class="label">getTowers path</div><div style="overflow-wrap:anywhere">${esc(getTowersPath||'Not returned')}</div>
+     <div class="label">getTowers fields</div><div style="overflow-wrap:anywhere">${esc((getTowersFields||[]).join(', ')||'None')}</div>
+
+     <div class="label">RAT subtype</div><div>${esc(cmDiagText(data?.ratSubtype||raw?.ratSubtype,''))}</div>
+   </div>
+
+   <details style="margin-top:12px">
+     <summary><b>Matching network responses (${matched.length})</b></summary>
+     ${matchedRows}
+   </details>
+
+   <details style="margin-top:10px">
+     <summary><b>Top captured responses</b></summary>
+     ${topRows}
+   </details>
+
+   ${section('getTowers matching object preview',getTowersObjectPreview,'No matching getTowers object preview')}
+   ${section('getTowers channels',data?.getTowersChannelsPreview)}
+   ${section('getTowers bandwidths',data?.getTowersBandwidthsPreview)}
+   ${section('getTowers bandNumbers',data?.getTowersBandNumbersPreview)}
+   ${section('getTowers estimatedBandData',data?.getTowersEstimatedBandDataPreview)}
+   ${section('getTowers frequencyData',data?.getTowersFrequencyDataPreview)}
+   ${section('getTowers bandwidthData',data?.getTowersBandwidthDataPreview)}
+   ${section('getTowers cells',data?.getTowersCellsPreview)}
+   ${section('getTowers towerAttributes',data?.getTowersTowerAttributesPreview)}
+
+   ${section('Decoded getTowers data',data?.getTowersDecoded)}
+   ${section('Exact site decoded data',data?.exactSiteDecoded)}
+   ${section('Candidate JSON preview',candidatePreview,'No candidate object')}
+   ${section('Selected panel preview',panelPreview,'No clean selected-tower panel text')}
+ </div>`;
+}
+
+function normalizeCellMapperTower(raw){
+ const src = raw && (raw.raw || raw);
+ if(!src || typeof src!=='object')return {};
+
+ // CellMapper responses have changed over time, so look for common names without inventing values.
+ const get=(...names)=>{
+   for(const n of names){
+     if(src[n]!==undefined && src[n]!==null && src[n]!=='')return src[n];
+   }
+   return '';
+ };
+
+ return {
+   towerId:String(get('base','siteID','towerId','eNB','gNB')||''),
+   latitude:String(get('latitude','lat')||''),
+   longitude:String(get('longitude','lon','lng')||''),
+   tac:String(get('LAC','TAC','lac','tac')||''),
+   cells:get('cells','Cells','cellIds'),
+   sectors:get('sectors','Sectors'),
+   pci:String(get('PCI','pci','BSIC')||''),
+   system:String(get('system','RAT','rat')||''),
+   subtype:String(get('subSystem','RATSubType','subtype')||''),
+   arfcn:get('ARFCNS','ARFCN','EARFCN','NRARFCN'),
+   verification:String(get('verification','verified','subSystem')||''),
+   mapCenterLatitude:String(src.mapCenterLatitude||''),
+   mapCenterLongitude:String(src.mapCenterLongitude||''),
+   networkScore:Number(src.networkScore||0),
+   networkSourceUrl:String(src.networkSourceUrl||''),
+   raw:src
+ };
+}
+
+
+const REMOTE_BACKEND_KEY='towerRegistryRemoteBackendUrl';
+
+function normalizeBackendUrl(v){
+ return String(v||'').trim().replace(/\/+$/,'');
+}
+function getRemoteBackendUrl(){
+ return normalizeBackendUrl(localStorage.getItem(REMOTE_BACKEND_KEY)||'');
+}
+function saveRemoteBackendUrl(){
+ const input=document.getElementById('remoteBackendUrl');
+ const status=document.getElementById('remoteBackendStatus');
+ const url=normalizeBackendUrl(input?.value||'');
+ if(!url){
+   localStorage.removeItem(REMOTE_BACKEND_KEY);
+   if(status)status.textContent='Backend URL cleared.';
+   return;
+ }
+ if(!/^https:\/\//i.test(url)){
+   if(status)status.textContent='Use an https:// backend URL.';
+   return;
+ }
+ localStorage.setItem(REMOTE_BACKEND_KEY,url);
+ if(status)status.textContent='Backend URL saved on this device.';
+}
+async function testRemoteBackend(){
+ const status=document.getElementById('remoteBackendStatus');
+ const base=getRemoteBackendUrl();
+ if(!base){if(status)status.textContent='Save a backend URL first.';return;}
+ if(status)status.textContent='Checking backend…';
+ try{
+   const r=await fetch(base+'/.netlify/functions/health',{cache:'no-store'});
+   const data=await r.json();
+   cmFullDiagnosticData=data;
+   lastCellMapperVideo=data?.videoInfo||null;
+   if(r.ok&&data.ok){if(status)status.textContent='Backend connected ✓';}
+   else{if(status)status.textContent='Backend responded, but health check failed.';}
+ }catch(e){
+   if(status)status.textContent='Could not reach backend. Check the URL and deployment.';
+ }
+}
+document.addEventListener('DOMContentLoaded',()=>{
+ const input=document.getElementById('remoteBackendUrl');
+ if(input)input.value=getRemoteBackendUrl();
+});
+
+
+function autoFillVerifiedCellMapperTower(data, normalized, requested){
+  const verification=String(
+    data?.verification ||
+    data?.raw?.verification ||
+    normalized?.verification ||
+    ''
+  ).toLowerCase();
+
+  const markerColor=String(
+    data?.markerColor ||
+    data?.raw?.markerColor ||
+    data?.verificationColorResult?.markerColor ||
+    ''
+  ).toLowerCase();
+
+  const isVerified = verification==='verified' || markerColor==='green' || data?.verified===true;
+  if(!isVerified){
+    return {filled:false, reason:'CellMapper tower is not confirmed green/verified.'};
+  }
+
+  const towerId=String(
+    data?.exactSiteID ||
+    data?.towerId ||
+    normalized?.towerId ||
+    requested?.towerId ||
+    ''
+  ).trim();
+
+  const lat=String(
+    data?.towerLatitude ||
+    data?.latitude ||
+    data?.raw?.latitude ||
+    normalized?.latitude ||
+    ''
+  ).trim();
+
+  const lon=String(
+    data?.towerLongitude ||
+    data?.longitude ||
+    data?.raw?.longitude ||
+    normalized?.longitude ||
+    ''
+  ).trim();
+
+  if(!towerId || !lat || !lon){
+    return {filled:false, reason:'Verified tower found, but tower ID or coordinates were missing.'};
+  }
+
+  // Fill the existing Add/Edit form by reusing the app's current CellMapper transfer path.
+  // This preserves carrier/PLMN/radio already selected by the user.
+  cmBackgroundData = {
+    ...(normalized||{}),
+    towerId,
+    latitude:lat,
+    longitude:lon,
+    verification:'verified',
+    markerColor:'green'
+  };
+
+  try{
+    fillBackgroundCellMapperIntoForm();
+  }catch(e){
+    // Fallback: populate common Add/Edit fields directly if the transfer helper changes.
+    const setters = [
+      ['towerId',towerId],['siteId',towerId],['enb',towerId],['gnb',towerId],
+      ['latitude',lat],['lat',lat],['longitude',lon],['lon',lon],['lng',lon]
+    ];
+    for(const [id,val] of setters){
+      const el=document.getElementById(id);
+      if(el && !el.value) el.value=val;
+    }
+  }
+
+  return {filled:true,towerId,latitude:lat,longitude:lon};
+}
+
+
+
+
+
+let lastCellMapperVideo=null;
+
+function downloadLastCellMapperVideo(){
+  const v=cmFullDiagnosticData?.videoInfo || lastCellMapperVideo || null;
+
+  if(!v){
+    alert('No CellMapper workflow video metadata was returned for this lookup.');
+    return;
+  }
+
+  if(!v.base64){
+    const detail=v.note ? `\n\nBackend: ${v.note}` : '';
+    alert('The backend returned video metadata but no embedded video data.'+detail);
+    return;
+  }
+
+  try{
+    const binary=atob(v.base64);
+    const bytes=new Uint8Array(binary.length);
+    for(let i=0;i<binary.length;i++){
+      bytes[i]=binary.charCodeAt(i);
+    }
+
+    const blob=new Blob([bytes],{type:v.mime||'video/webm'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download=v.fileName||'CellMapper_Workflow.webm';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),3000);
+  }catch(e){
+    alert('The CellMapper video was returned, but the browser could not decode it: '+String(e?.message||e));
+  }
+}
+
+function cellMapperFinalStatus(data){
+  // v67: trust the backend's final text-based CellMapper classification.
+  // Marker color is retained only as a compatibility fallback for older backends.
+  const backendStatus=String(data?.cellMapperStatus||'').trim().toLowerCase();
+  const verification=String(
+    data?.finalVerification ||
+    data?.verification ||
+    data?.raw?.verification ||
+    ''
+  ).trim().toLowerCase();
+
+  const color=String(
+    data?.finalMarkerColor ||
+    data?.cellMapperMarkerColor ||
+    data?.markerColor ||
+    data?.raw?.markerColor ||
+    ''
+  ).trim().toLowerCase();
+
+  if(
+    backendStatus==='not in cellmapper' ||
+    verification==='not_in_cellmapper' ||
+    data?.humanTowerExists===false
+  ){
+    return {key:'not-in-cellmapper',label:'Not in CellMapper',verified:false,markerColor:''};
+  }
+
+  if(
+    backendStatus==='verified' ||
+    verification==='verified' ||
+    color==='green'
+  ){
+    return {key:'verified',label:'Verified',verified:true,markerColor:'green'};
+  }
+
+  if(
+    backendStatus==='unverified' ||
+    verification==='unverified' ||
+    color==='red'
+  ){
+    return {key:'unverified',label:'Unverified',verified:false,markerColor:'red'};
+  }
+
+  return {
+    key:'lookup-error',
+    label:backendStatus==='could not read extra data'
+      ? 'Could not read Extra Data'
+      : 'Could not read Extra Data',
+    verified:false,
+    markerColor:''
+  };
+}
+
+
+async function runBackgroundCellMapperLookup(fieldsOverride){
+ const status=document.getElementById('cmBackgroundStatus');
+ const result=document.getElementById('cmBackgroundResult');
+
+ const plmn=(fieldsOverride?.plmn || document.getElementById('cmPlmn')?.value || '').replace(/\D/g,'');
+ const panelRadio=document.getElementById('cmRadio')?.value||'LTE';
+ const radio=fieldsOverride?.radio || (panelRadio==='NR'?'5G':(panelRadio==='UMTS'?'3G':'LTE'));
+ const towerId=String(fieldsOverride?.sid || document.getElementById('cmTowerId')?.value || '').trim();
+ const tac=String(fieldsOverride?.tac || '').trim();
+
+ if(!plmn || !towerId){
+   if(status)status.textContent='Need PLMN and eNB/gNB.';
+   return;
+ }
+
+ if(status)status.textContent=`Looking up ${plmn} ${radio} ${towerId} in the background…`;
+ if(result)result.innerHTML='';
+
+ try{
+   const backend=getRemoteBackendUrl();
+   if(!backend){
+     if(status)status.textContent='No background backend configured. Open Backup and save the backend URL first.';
+     return;
+   }
+
+   const r=await fetch(backend+'/.netlify/functions/cellmapper-lookup',{
+     method:'POST',
+     headers:{'content-type':'application/json'},
+     body:JSON.stringify({plmn,radio,towerId,tac})
+   });
+
+   const data=await r.json();
+   cmFullDiagnosticData=data;
+
+   // Keep data available for diagnostics even when backend intentionally returns ok:false.
+   const normalized=normalizeCellMapperTower(data.raw||data);
+   const t=normalized;
+
+   const cmState=cellMapperFinalStatus(data);
+
+   if(cmState.key==='verified'){
+     normalized.verification='verified';
+     normalized.markerColor='green';
+     cmBackgroundData=normalized;
+
+     const verifiedAutofill=autoFillVerifiedCellMapperTower(
+       {...data,verification:'verified',markerColor:'green',verified:true,cellMapperVerified:true},
+       normalized,
+       {plmn,radio,towerId,tac}
+     );
+
+     if(status){
+       status.textContent=verifiedAutofill.filled
+         ? `CellMapper GREEN / VERIFIED ✓ — tower ${verifiedAutofill.towerId} and coordinates were filled into Add/Edit.`
+         : 'CellMapper GREEN / VERIFIED ✓';
+     }
+   }else if(cmState.key==='unverified'){
+     normalized.verification='unverified';
+     normalized.markerColor='red';
+     cmBackgroundData=normalized;
+     if(status)status.textContent='CellMapper RED / UNVERIFIED — tower exists in CellMapper but is not verified.';
+   }else if(cmState.key==='not-in-cellmapper'){
+     cmBackgroundData=null;
+     if(status)status.textContent='Not in CellMapper';
+   }else{
+     cmBackgroundData=null;
+     if(status)status.textContent='CellMapper found the tower, but Extra Data could not be read. Lookup was not saved as verified or unverified.';
+   }
+
+   if(result){
+     const cmState=cellMapperFinalStatus(data);
+     const mainClass=cmState.key==='verified'
+       ? 'card result ok'
+       : cmState.key==='unverified'
+         ? 'card result unknown'
+         : 'notice';
+
+     const latOut=cmState.key==='not-in-cellmapper'
+       ? 'Not in CellMapper'
+       : (data.towerLatitude||t.latitude||'Not returned');
+     const lonOut=cmState.key==='not-in-cellmapper'
+       ? 'Not in CellMapper'
+       : (data.towerLongitude||t.longitude||'Not returned');
+
+     result.innerHTML=`<div class="${mainClass}">
+       <h3>CellMapper Result</h3>
+       <div class="kv">
+         <div class="label">Tower ID</div><div>${esc(t.towerId||towerId)}</div>
+         <div class="label">CellMapper status</div><div><b>${esc(cmState.label)}</b></div>
+         <div class="label">Tower Latitude</div><div>${esc(latOut)}</div>
+         <div class="label">Tower Longitude</div><div>${esc(lonOut)}</div>
+         <div class="label">System</div><div>${esc(t.system||radio)}</div>
+         <div class="label">Backend version</div><div>${esc(data.version||'Not returned')}</div>
+         <div class="label">Last human workflow step</div><div>${esc((data.humanUiTrace||[]).slice(-1)[0]?.step||'Not returned')}</div>
+         <div class="label">Workflow mode</div><div>Direct URL: follows recorded black-circle click path</div>
+         <div class="label">Backend source</div><div>${esc(data.source||data.backendSource||'Not returned')}</div>
+         <div class="label">Workflow mode</div><div>${esc(data.workflowMode||'Not returned')}</div>
+         <div class="label">Workflow start URL</div><div style="word-break:break-all">${esc(data.workflowStartUrl||'Not returned')}</div>
+         <div class="label">Workflow video</div>
+         <div>${data.videoInfo?.base64
+           ? `<button class="btn secondary" onclick="downloadLastCellMapperVideo()">Download Video</button>`
+           : esc(data.videoInfo?.note||'Not returned')}</div>
+       </div>
+     </div>`;
+   }
+ }catch(e){
+   cmBackgroundData=null;
+   if(status)status.textContent='Background backend could not be reached. Open Backup and verify the separate backend URL.';
+   if(result){
+     result.innerHTML=`<div class="notice"><b>Backend request failed.</b><br>${esc(String(e&&e.message||e))}</div>`;
+   }
+ }
+}
+
+function fillBackgroundCellMapperIntoForm(){
+ if(!cmBackgroundData){
+   const s=document.getElementById('cmBackgroundStatus');
+   if(s)s.textContent='Run a successful background lookup first.';
+   return;
+ }
+
+ const t=cmBackgroundData;
+ const plmn=(document.getElementById('cmPlmn')?.value||'').replace(/\D/g,'');
+ const carrier=carrierNameFromPlmn(plmn);
+ const radio=(document.getElementById('cmRadio')?.value==='NR')?'5G':'LTE';
+ const requestedId=(document.getElementById('cmTowerId')?.value||'').trim();
+ const towerId=t.towerId||requestedId;
+
+ showTab('add',document.querySelectorAll('.tab')[4]);
+ clearForm();
+
+ document.getElementById('fCarrier').value=carrier==='custom'?'':carrier;
+ document.getElementById('fPlmn').value=plmn;
+ document.getElementById('fPlmn').dataset.auto='0';
+ document.getElementById('fRadio').value=radio;
+ updateIdLabel();
+ document.getElementById('fId').value=towerId;
+ document.getElementById('fTac').value=t.tac||'';
+
+ if(document.getElementById('fLat'))document.getElementById('fLat').value=t.latitude||'';
+ if(document.getElementById('fLon'))document.getElementById('fLon').value=t.longitude||'';
+
+ const existing=DB.records.find(r =>
+   String(r.radio||'')===radio &&
+   String(r.eNB||r.gNB||'')===String(towerId) &&
+   (String(r.carrier||'')===carrier || String(r.plmn||'').replace(/\D/g,'')===plmn)
+ );
+
+ if(existing){
+   document.getElementById('editKey').value=keyOf(existing);
+   document.getElementById('fSite').value=existing.site||'';
+   document.getElementById('fBands').value=existing.bands||'';
+   document.getElementById('fBandwidth').value=existing.bandwidth||'';
+   document.getElementById('fCell').value=existing.cell_id||'';
+   document.getElementById('fLocal').value=existing.local_cell||'';
+   document.getElementById('fPci').value=existing.pci||t.pci||'';
+   document.getElementById('formTitle').textContent='CellMapper Background Result';
+ }else{
+   document.getElementById('editKey').value='';
+   document.getElementById('fSite').value='';
+   document.getElementById('fStatus').value='unknown';
+   document.getElementById('fPci').value=t.pci||'';
+   document.getElementById('formTitle').textContent='Add CellMapper Background Tower';
+ }
+
+ document.getElementById('fNotes').value='Source: CellMapper background experimental lookup. Review before saving.';
+}
+
+function syncCellMapperPlmn(){
+ const carrier=document.getElementById('cmCarrier')?.value||'';
+ const plmnInput=document.getElementById('cmPlmn');
+ if(!plmnInput)return;
+ if(carrier==='custom'){
+   plmnInput.value='';
+   plmnInput.focus();
+   return;
+ }
+ const cfg=CELLMAPPER_CARRIERS[carrier];
+ if(cfg)plmnInput.value=cfg.plmn;
+}
+
+function parsePlmnForCellMapper(plmn){
+ const p=String(plmn||'').replace(/\D/g,'');
+ if(p.length<5)return null;
+ const mcc=p.slice(0,3);
+ const mnc=p.slice(3);
+ return {mcc,mnc};
+}
+
+function buildCellMapperUrl(){
+ const plmn=document.getElementById('cmPlmn')?.value||'';
+ const radio=document.getElementById('cmRadio')?.value||'LTE';
+ const ids=parsePlmnForCellMapper(plmn);
+ if(!ids)return null;
+ const type=radio==='NR'?'NR':(radio==='UMTS'?'UMTS':'LTE');
+ return `https://www.cellmapper.net/map?MCC=${encodeURIComponent(ids.mcc)}&MNC=${encodeURIComponent(ids.mnc)}&type=${encodeURIComponent(type)}&showTowers=true&showIcons=true&showTowerLabels=true&clusterEnabled=true&tilesEnabled=true&showOrphans=false&showNoFrequencyOnly=false&showFrequencyOnly=false&showBandwidthOnly=false&DateFilterType=Last&showHex=false&showVerifiedOnly=false&showUnverifiedOnly=false&showLTECAOnly=false&showENDCOnly=false&showBand=0&showSectorColours=true&mapType=roadmap&darkMode=false&imperialUnits=false`;
+}
+
+function previewCellMapperSearch(){
+ const carrier=document.getElementById('cmCarrier')?.value||'';
+ const plmn=document.getElementById('cmPlmn')?.value||'';
+ const radio=document.getElementById('cmRadio')?.value||'LTE';
+ const id=(document.getElementById('cmTowerId')?.value||'').trim();
+ const out=document.getElementById('cmSearchPreview');
+
+ const url=buildCellMapperUrl();
+ if(!url){
+   out.innerHTML='<div class="notice">Enter a valid PLMN first.</div>';
+   return;
+ }
+ if(!id){
+   out.innerHTML='<div class="notice">Enter an eNB or gNB.</div>';
+   return;
+ }
+
+ const typeLabel=radio==='NR'?'5G NR':(radio==='UMTS'?'3G UMTS':'4G LTE');
+ out.innerHTML=`<div class="card result ok">
+   <h3>${esc(carrier==='custom'?'Future / Custom Carrier':carrier)} CellMapper Search</h3>
+   <div class="kv">
+     <div class="label">PLMN</div><div>${esc(plmn)}</div>
+     <div class="label">Network</div><div>${typeLabel}</div>
+     <div class="label">${radio==='NR'?'gNB':(radio==='UMTS'?'NodeB':'eNB')}</div><div>${esc(id)}</div>
+   </div>
+   <div style="margin-top:10px">
+     Open CellMapper, tap <b>Search → Tower Search</b>, enter <b>${esc(id)}</b>, then open the returned tower.
+   </div>
+ </div>`;
+}
+
+function openCellMapperTowerSearch(){
+ const url=buildCellMapperUrl();
+ const id=(document.getElementById('cmTowerId')?.value||'').trim();
+ const out=document.getElementById('cmSearchPreview');
+
+ if(!url){
+   if(out)out.innerHTML='<div class="notice">Enter a valid PLMN first.</div>';
+   return;
+ }
+ if(!id){
+   if(out)out.innerHTML='<div class="notice">Enter an eNB or gNB first.</div>';
+   return;
+ }
+
+ previewCellMapperSearch();
+ window.open(url,'_blank','noopener');
+}
+
 function lookup(){
  if(!DB)return;
  const plmn=document.getElementById('plmn').value.trim(), radio=document.getElementById('radio').value, home=document.getElementById('home').value;
@@ -936,7 +2310,7 @@ function lookup(){
  const rr=signalRating('rsrp',rsrp),rq=signalRating('rsrq',rsrq),sr=signalRating('snr',snr);
  const vals=[rsrp?rr:null,rsrq?rq:null,snr?sr:null].filter(Boolean);
  let overall='Unknown',icon='⚪';
- if(vals.length){const rank={'Excellent':4,'Good':3,'Fair':2,'Poor':1,'Very Poor':0};let m=Math.min(...vals.map(x=>rank[x[0]]??0));overall=Object.keys(rank).find(k=>rank[k]===m)||'Unknown';icon=m>=3?'🟢':m===2?'🟡':m===1?'🟠':'🔴'}
+ if(vals.length){const rank={'Exceptional':7,'Excellent':6,'Very Good':5,'Good':4,'Moderate':3,'Medium':2,'Weak':1,'Very Weak':0};let m=Math.min(...vals.map(x=>rank[x[0]]??0));overall=Object.keys(rank).find(k=>rank[k]===m)||'Unknown';icon=m>=4?'🟢':m>=2?'🟡':m===1?'🟠':'🔴'}
  const tac=document.getElementById('lookupTac').value.trim();
  let tacnote='';
  if(carrier==='STRATA Networks'&&tac){tacnote=tac==='101'?'Other carriers NOT allowed to roam':tac==='102'?'Other carriers ARE allowed to roam':'No special TAC rule stored';}
@@ -953,6 +2327,14 @@ function lookup(){
  </div>
  <div style="margin-top:12px"><b>Signal: ${icon} ${overall}</b></div>
  <div class="small">RSRP: ${rsrp?`${rr[1]} ${esc(rsrp)} dBm · ${rr[0]}`:'Unknown'}<br>RSRQ: ${rsrq?`${rq[1]} ${esc(rsrq)} dB · ${rq[0]}`:'Unknown'}<br>SNR/SINR: ${snr?`${sr[1]} ${esc(snr)} dB · ${sr[0]}`:'Unknown'}</div>
+ <div class="scan-experience" style="margin:10px 0 2px;padding:10px 12px;border:1px solid #334155;border-radius:10px;background:#0f172a">
+ <div style="font-weight:800;margin-bottom:4px">Expected experience</div>
+ <div class="small" style="line-height:1.5">
+  <div><b>📞 Calls:</b> ${overall==='Excellent'?'Clear and stable.':overall==='Good'?'Clear and generally stable.':overall==='Fair'?'Should work; brief audio issues possible.':overall==='Poor'?'May sound choppy or briefly cut out.':overall==='Very Poor'?'May break up, sound robotic, or drop.':'Not enough signal data.'}</div>
+  <div><b>🎬 Video:</b> ${overall==='Excellent'?'HD should stream smoothly.':overall==='Good'?'Should stream smoothly with little buffering.':overall==='Fair'?'May reduce quality or buffer occasionally.':overall==='Poor'?'Expect buffering and lower quality.':overall==='Very Poor'?'Frequent buffering and major quality drops likely.':'Not enough signal data.'}</div>
+  <div><b>🌐 Data:</b> ${overall==='Excellent'?'Fast, responsive, and consistent.':overall==='Good'?'Reliable speeds and responsive browsing.':overall==='Fair'?'Usable, but speeds may vary.':overall==='Poor'?'Slower, inconsistent speeds and more lag.':overall==='Very Poor'?'May be very slow, unstable, or unusable.':'Not enough signal data.'}</div>
+ </div>
+</div>
  <div style="margin-top:10px"><b>Math:</b> ${esc(math||'Enter Cell ID/NCI to calculate')}</div>
  
  ${rec?.notes?'<div class="small" style="margin-top:8px">'+esc(rec.notes)+'</div>':''}
@@ -962,7 +2344,12 @@ function lookup(){
 function renderRegistry(){
  if(!DB)return;
  const q=document.getElementById('q').value.toLowerCase().trim();
- const rows=DB.records.filter(r=>!q||JSON.stringify(r).toLowerCase().includes(q));
+ const rows=DB.records.filter(r=>{
+   if(!q)return true;
+   if(['unverified','unknown','provisional'].includes(q))return isUnverifiedTower(r);
+   if(['unnamed','unmapped','no name'].includes(q))return isUnnamedTower(r);
+   return JSON.stringify(r).toLowerCase().includes(q);
+ });
  const lte=DB.records.filter(r=>r.radio==='LTE'&&r.carrier!=='T-Mobile Starlink').length;
  const nr=DB.records.filter(r=>r.radio==='5G'&&r.carrier!=='T-Mobile Starlink').length;
  const sat=DB.records.filter(r=>r.carrier==='T-Mobile Starlink').length;
@@ -1007,7 +2394,12 @@ function calcFormReverse(){
 }
 function clearForm(){
  ['editKey','fId','fSite','fBands','fBandwidth','fCell','fLocal','fPci','fTac','fLat','fLon','fNotes'].forEach(id=>document.getElementById(id).value='');
- document.getElementById('fCarrier').value='T-Mobile';document.getElementById('fPlmn').dataset.auto='1';document.getElementById('fStatus').value='confirmed';document.getElementById('fRadio').value='LTE';document.getElementById('formTitle').textContent='Add Tower';document.getElementById('duplicateWarn').innerHTML='';const usb=document.getElementById('unknownScanBanner');if(usb){usb.classList.add('hidden');usb.innerHTML='';}const usa=document.getElementById('unknownScanActions');if(usa)usa.classList.add('hidden');if(document.getElementById('idAutofillStatus'))document.getElementById('idAutofillStatus').textContent='';syncPlmn();updateIdLabel();
+ document.getElementById('fCarrier').value='';document.getElementById('fPlmn').dataset.auto='0';document.getElementById('fStatus').value='confirmed';document.getElementById('fRadio').value='LTE';document.getElementById('formTitle').textContent='Add Tower';document.getElementById('duplicateWarn').innerHTML='';const usb=document.getElementById('unknownScanBanner');if(usb){usb.classList.add('hidden');usb.innerHTML='';}const usa=document.getElementById('unknownScanActions');if(usa)usa.classList.add('hidden');if(document.getElementById('idAutofillStatus'))document.getElementById('idAutofillStatus').textContent='';syncPlmn();updateIdLabel();
+
+ const fp=document.getElementById('fPlmn'); if(fp){fp.value='';fp.dataset.auto='0';}
+ const fc=document.getElementById('fCarrier'); if(fc)fc.value='';
+ const ft=document.getElementById('formTitle'); if(ft)ft.textContent='Add Tower';
+
 }
 
 function autofillTowerById(){
@@ -1076,6 +2468,7 @@ function autofillTowerById(){
 
 
 function saveRecord(){
+ const isNewRecord=!document.getElementById('editKey').value.trim();
  if(!DB)return;
  const carrier=document.getElementById('fCarrier').value,radio=document.getElementById('fRadio').value,id=document.getElementById('fId').value.trim(),site=document.getElementById('fSite').value.trim();
  if(!id||!site){toast('Tower ID and site name are required.');return}
@@ -1113,7 +2506,33 @@ function saveRecord(){
  if(carrier==='STRATA Networks'&&id==='1079'&&site!=='UNMAPPED STRATA SITE ?'&&rec.status==='confirmed'){
    // User is explicitly naming 1079 in-app, so allow it.
  }
- renderRegistry();refreshCarrierList();if(towerMap)renderTowerMap();clearForm();
+ renderRegistry();refreshCarrierList();if(towerMap)renderTowerMap();
+ refreshUniversalLookupIfPresent();
+ if(isNewRecord)clearForm();
+
+ // After a successful Save Tower action, return to Lookup and show the tower
+ // that was just saved so it is immediately obvious the save worked.
+ showTab('lookup',document.querySelectorAll('.tab')[0]);
+ const searchBox=document.getElementById('universalSearch');
+ if(searchBox)searchBox.value=id;
+ const verifyBox=document.getElementById('searchVerification');
+ if(verifyBox)verifyBox.value='all';
+ setTimeout(()=>{
+   refreshUniversalLookupIfPresent();
+   const out=document.getElementById('universalLookupOut');
+   if(out){
+     const firstCard=out.querySelector('.card,.record,.result');
+     if(firstCard){
+       try{firstCard.scrollIntoView({behavior:'smooth',block:'center'});}catch{}
+       firstCard.style.outline='3px solid #2563eb';
+       firstCard.style.outlineOffset='3px';
+       setTimeout(()=>{
+         firstCard.style.outline='';
+         firstCard.style.outlineOffset='';
+       },3500);
+     }
+   }
+ },0);
 }
 function editRecord(k){
  let r=DB.records.find(x=>keyOf(x)===k);if(!r)return;r=getEffectiveRecord(r);
@@ -1129,6 +2548,7 @@ function deleteRecord(k){
  if(!confirm(`Mark ${r.site} (${r.eNB||r.gNB}) for deletion? It will not be removed until Save All Changes.`))return;
  stageExistingTowerChange(r,{__delete:true},'Delete tower');
  toast('Deletion added to pending changes.');
+ refreshUniversalLookupIfPresent();
 }
 function exportRegistry(){
  const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='Master_Cellular_Tower_Registry_Backup.json';a.click();URL.revokeObjectURL(a.href);toast('Registry exported.');
@@ -1364,6 +2784,267 @@ function extractScanFields(text){
  return {radio,plmn,cell,sid,local,band,bw,pci,tac,rsrp,rsrq,snr};
 }
 
+function scanSignalExperienceHtml(fields,rr,rq,sr,overall){
+ const hasRsrp=String(fields?.rsrp||'').trim()!=='';
+ const hasRsrq=String(fields?.rsrq||'').trim()!=='';
+ const hasSnr=String(fields?.snr||'').trim()!=='';
+ const metricText=(kind,rating)=>{
+  const grade=rating?.[0]||'Unknown';
+  if(kind==='rsrp'){
+   return ({
+    'Excellent':'Strong signal strength. Expect a stable connection with good indoor reliability and little signal-strength limitation on speed.',
+    'Good':'Healthy signal strength. Expect reliable service and generally good speeds, with only modest loss in harder indoor areas.',
+    'Medium':'Moderate signal strength. Service should work, but speeds and consistency can drop indoors, behind terrain, or while moving.',
+    'Weak':'Weak signal strength. Expect slower or less consistent data, higher chance of band/site changes, and reduced indoor reliability.',
+    'Very Weak':'Very weak signal strength. Expect reduced speeds and reliability, possible buffering or stalls, and a greater chance of losing or changing the connection.'
+   })[grade]||'Signal strength could not be interpreted.';
+  }
+  if(kind==='rsrq'){
+   return ({
+    'Excellent':'Very clean signal quality. Interference and cell loading are unlikely to be limiting your experience.',
+    'Good':'Good signal quality. Interference/congestion does not appear to be a major problem.',
+    'Medium':'Moderate signal quality. Expect some speed fluctuation, retransmissions, or latency when the network gets busier.',
+    'Weak':'Poor signal quality. Expect inconsistent throughput, higher latency, and more retransmissions even if signal strength looks acceptable.',
+    'Very Weak':'Very poor signal quality. Heavy interference or loading may cause slow data, unstable speeds, high latency, and connection difficulty.'
+   })[grade]||'Signal quality could not be interpreted.';
+  }
+  return ({
+   'Excellent':'Excellent signal-to-interference margin. The radio can usually use efficient modulation, supporting strong speeds and low retransmission rates.',
+   'Good':'Good signal-to-interference margin. Expect solid data performance with relatively little interference-related slowdown.',
+   'Medium':'Moderate signal-to-interference margin. Data should work, but peak speeds may be limited and performance can fluctuate.',
+   'Weak':'Low signal-to-interference margin. Expect reduced modulation, slower speeds, higher latency, and more buffering or retransmissions.',
+   'Very Weak':'Very low signal-to-interference margin. Expect severe speed loss, instability, high latency, and possible difficulty keeping usable data service.'
+  })[grade]||'Signal-to-interference margin could not be interpreted.';
+ };
+ const rows=[];
+ if(hasRsrp)rows.push(`<div style="margin-top:7px"><b>RSRP ${rr[1]} ${esc(fields.rsrp)} dBm — ${esc(rr[0])}:</b> ${esc(metricText('rsrp',rr))}</div>`);
+ if(hasRsrq)rows.push(`<div style="margin-top:7px"><b>RSRQ ${rq[1]} ${esc(fields.rsrq)} dB — ${esc(rq[0])}:</b> ${esc(metricText('rsrq',rq))}</div>`);
+ if(hasSnr)rows.push(`<div style="margin-top:7px"><b>SNR/SINR ${sr[1]} ${esc(fields.snr)} dB — ${esc(sr[0])}:</b> ${esc(metricText('snr',sr))}</div>`);
+ if(!rows.length)return '';
+ const rank={'Exceptional':7,'Excellent':6,'Very Good':5,'Good':4,'Moderate':3,'Medium':2,'Weak':1,'Very Weak':0};
+ const observed=[];
+ if(hasRsrp)observed.push({name:'weak signal strength',metric:'RSRP',grade:rr[0],score:rank[rr[0]]??-1});
+ if(hasRsrq)observed.push({name:'signal quality / interference',metric:'RSRQ',grade:rq[0],score:rank[rq[0]]??-1});
+ if(hasSnr)observed.push({name:'signal-to-interference margin',metric:'SNR/SINR',grade:sr[0],score:rank[sr[0]]??-1});
+ observed.sort((a,b)=>a.score-b.score);
+ const worst=observed[0];
+ let experience='';
+ if(overall==='Excellent')experience='Expect a strong, stable connection with good responsiveness and little radio-related limitation on data performance.';
+ else if(overall==='Good')experience='Expect reliable everyday service and generally good data performance. Brief slowdowns are more likely to come from network load than the radio link.';
+ else if(overall==='Fair')experience='Expect usable service, but speeds and latency may vary. Streaming and normal browsing should generally work, while peak speeds may be limited.';
+ else if(overall==='Poor')experience='Expect noticeably inconsistent performance: slower downloads, increased latency, possible buffering, and weaker reliability indoors or while moving.';
+ else if(overall==='Very Poor')experience='Expect poor real-world performance: slow or unstable data, higher latency, buffering or stalls, and a greater chance of the phone changing bands/sites or losing usable service.';
+ else experience='There is not enough signal information to predict the connection experience confidently.';
+ if(worst&&worst.score>=0&&worst.score<4)experience+=` The main radio limitation in this scan is ${worst.name} (${worst.metric}: ${worst.grade}).`;
+ return `<div class="notice" style="margin-top:12px"><b>What you should experience with this scan</b><div class="small" style="margin-top:6px">${rows.join('')}</div><div style="margin-top:10px"><b>Overall:</b> ${esc(experience)}</div></div>`;
+}
+
+
+function scanMetricExperience(kind, grade){
+ const text={
+  rsrp:{
+   'Exceptional':'Exceptional received power. Coverage itself should impose virtually no limitation; indoor penetration and mobility should be very dependable.',
+   'Excellent':'Very strong received power. Calls should remain stable and data should have plenty of signal margin indoors and while moving.',
+   'Very Good':'Strong received power. Coverage should be dependable with only minor weakening through buildings or terrain.',
+   'Good':'Healthy received power. Everyday service should be reliable, though deeper indoor areas may begin reducing speed or stability.',
+   'Moderate':'Usable received power with less margin. Indoor obstacles, terrain, or movement can cause more band/site changes and variable speeds.',
+   'Fair':'Weakening received power. Calls can become less robust and data may slow or fluctuate, especially indoors or near the cell edge.',
+   'Poor':'Weak received power. Expect reduced reliability, slower data, more handoffs/reselections, and a higher chance of call or session interruption.',
+   'No Signal':'Marginal received power. Maintaining the radio link itself may be difficult, causing severe data slowdown, stalls, call breakup, or loss of service.'
+  },
+  rsrq:{
+   'Exceptional':'Exceptionally clean radio conditions with very little apparent interference or loading. Sessions should remain highly consistent.',
+   'Excellent':'Very clean signal quality. Interference and cell loading should have little effect on calls, latency, or throughput.',
+   'Very Good':'Clean signal quality. Only small efficiency losses are expected from interference or network loading.',
+   'Good':'Healthy signal quality. Normal loading or interference may trim peak performance but should not seriously disrupt sessions.',
+   'Moderate':'Noticeable interference or loading. Calls should usually remain usable, while data speed and latency may vary as conditions change.',
+   'Fair':'Degraded signal quality. Retransmissions and scheduling inefficiency can produce inconsistent data, extra latency, and occasional media hiccups.',
+   'Poor':'Heavy interference or loading. Expect unstable throughput, higher latency, more retransmissions, and possible call or session quality problems.',
+   'Very Weak':'Severely degraded quality. Even with decent signal strength, interference/loading can make calls unreliable and data sessions slow or unstable.'
+  },
+  sinr:{
+   'Exceptional':'The useful signal overwhelmingly dominates noise and interference. The radio can use its most efficient modulation and sustain very clean sessions.',
+   'Excellent':'Excellent signal clarity. High-efficiency modulation should work well, supporting fast data, smooth video, and very few radio retransmissions.',
+   'Very Good':'Very clean signal. Calls and video should be stable and data should remain fast with little interference-related loss.',
+   'Good':'Good clarity with some interference present. Normal calls, streaming, and data should work well, though peak throughput may be slightly reduced.',
+   'Moderate':'Moderate clarity. The modem may step down modulation, causing lower peak speeds and occasional latency or video-quality changes.',
+   'Fair':'Limited signal clarity. More retransmissions and conservative modulation can cause slower data, buffering, and less consistent call quality.',
+   'Poor':'Interference/noise is close to the wanted signal. Expect substantial speed loss, latency, buffering, and possible rough or unstable calls.',
+   'Very Weak':'Noise/interference rivals or exceeds the useful signal. Data can become extremely slow or stall and real-time sessions may break up or fail.'
+  }
+ };
+ return text[kind]?.[grade] || '';
+}
+function scanExperienceSummaryHtml(fields,rr,rq,sr){
+  const rows=[];
+  if(String(fields?.rsrp||'').trim()!==''){
+    rows.push(`<div style="margin-top:7px"><b>RSRP ${rr[1]} ${esc(fields.rsrp)} dBm — ${esc(rr[0])}</b><br>${esc(scanMetricExperience('rsrp',rr[0]))}</div>`);
+  }
+  if(String(fields?.rsrq||'').trim()!==''){
+    rows.push(`<div style="margin-top:7px"><b>RSRQ ${rq[1]} ${esc(fields.rsrq)} dB — ${esc(rq[0])}</b><br>${esc(scanMetricExperience('rsrq',rq[0]))}</div>`);
+  }
+  if(String(fields?.snr||'').trim()!==''){
+    rows.push(`<div style="margin-top:7px"><b>SNR/SINR ${sr[1]} ${esc(fields.snr)} dB — ${esc(sr[0])}</b><br>${esc(scanMetricExperience('sinr',sr[0]))}</div>`);
+  }
+  if(!rows.length) return '';
+  return `<div class="notice" style="margin-top:12px"><b>What this should feel like</b>${rows.join('')}</div>`;
+}
+
+
+function normalizeScannedBandForRadio(raw,radio){
+ let b=String(raw||'').trim().replace(/\s+/g,'');
+ if(!b)return '';
+ const r=String(radio||'').toUpperCase();
+
+ // Only accept a simple cellular band token. This prevents OCR garbage from
+ // silently entering the registry.
+ const m=b.match(/^(?:[bBnN])?(\d{1,3})$/);
+ if(!m)return '';
+
+ const num=String(Number(m[1]));
+ if(!num || num==='NaN')return '';
+
+ return r==='5G' ? `n${num}` : `B${num}`;
+}
+
+function mergeBandIntoList(existing,band,radio){
+ const add=normalizeScannedBandForRadio(band,radio);
+ if(!add)return {changed:false,value:String(existing||'').trim(),band:''};
+
+ const raw=String(existing||'').trim();
+ const tokens=raw
+   ? raw.split(/[\s,;/]+/).map(x=>x.trim()).filter(Boolean)
+   : [];
+
+ const normalized=tokens.map(x=>{
+   const m=String(x).match(/^(?:[bBnN])?(\d{1,3})$/);
+   if(!m)return String(x);
+   const num=String(Number(m[1]));
+   const prefix=/^[nN]/.test(x)?'n':(/^[bB]/.test(x)?'B':(String(radio).toUpperCase()==='5G'?'n':'B'));
+   return `${prefix}${num}`;
+ });
+
+ const exists=normalized.some(x=>String(x).toLowerCase()===add.toLowerCase());
+ if(exists)return {changed:false,value:normalized.join(' '),band:add};
+
+ normalized.push(add);
+
+ // Keep LTE B-bands and 5G n-bands numerically ordered where possible.
+ normalized.sort((a,b)=>{
+   const ap=/^n/i.test(a)?1:0, bp=/^n/i.test(b)?1:0;
+   if(ap!==bp)return ap-bp;
+   const an=Number(String(a).replace(/\D/g,'')),bn=Number(String(b).replace(/\D/g,''));
+   if(Number.isFinite(an)&&Number.isFinite(bn))return an-bn;
+   return String(a).localeCompare(String(b));
+ });
+
+ return {changed:true,value:normalized.join(' '),band:add};
+}
+
+function findExistingScanTower(carrier,radio,sid){
+ const id=String(sid||'').trim();
+ if(!id || !DB || !Array.isArray(DB.records))return null;
+
+ // Preferred match: carrier + radio + tower ID.
+ let rec=DB.records.find(r=>
+   String(r.carrier||'')===String(carrier||'') &&
+   String(r.radio||'')===String(radio||'') &&
+   String(r.eNB||r.gNB||'')===id
+ );
+ if(rec)return rec;
+
+ // If an older/minimal record was saved without useful carrier metadata,
+ // allow an ID-only fallback ONLY when it is unique for this radio type.
+ const matches=DB.records.filter(r=>
+   String(r.radio||'')===String(radio||'') &&
+   String(r.eNB||r.gNB||'')===id
+ );
+ return matches.length===1 ? matches[0] : null;
+}
+
+function autoAddScannedBandToExistingTower(baseRecord,fields){
+ if(!baseRecord || !fields?.band)return {changed:false};
+
+ const effective=(typeof getEffectiveRecord==='function')
+   ? getEffectiveRecord(baseRecord)
+   : baseRecord;
+
+ const merged=mergeBandIntoList(effective?.bands||baseRecord.bands||'',fields.band,fields.radio);
+ if(!merged.band || !merged.changed)return {changed:false,band:merged.band,value:merged.value};
+
+ // This specific enrichment is intentionally automatic and immediately saved.
+ // Update the actual record.
+ baseRecord.bands=merged.value;
+
+ // If this tower also has an unsaved Add/Edit preview, merge the automatic band
+ // into that preview too so the current UI cannot hide the newly learned band.
+ try{
+   const k=(typeof pendingKey==='function') ? pendingKey(baseRecord) : '';
+   if(k && typeof pendingTowerChanges!=='undefined' && pendingTowerChanges[k]){
+     pendingTowerChanges[k].changes={
+       ...pendingTowerChanges[k].changes,
+       bands:merged.value
+     };
+     if(typeof refreshPendingChangesUI==='function')refreshPendingChangesUI();
+   }
+ }catch(e){}
+
+ saveLocal();
+
+ try{renderRegistry();}catch(e){}
+ try{refreshUniversalLookupIfPresent();}catch(e){}
+ try{if(towerMap)renderTowerMap();}catch(e){}
+
+ toast(`Added ${merged.band} to ${baseRecord.site||baseRecord.eNB||baseRecord.gNB||'saved tower'}.`);
+ return {changed:true,band:merged.band,value:merged.value};
+}
+
+
+function compactExperienceSummaryHtml(fields,rr,rq,sr){
+  var rank={'Exceptional':7,'Excellent':6,'Very Good':5,'Good':4,'Moderate':3,'Medium':2,'Weak':1,'Very Weak':0};
+  var scores=[];
+
+  if(fields && String(fields.rsrp||'').trim()!=='') scores.push(rank[rr[0]]);
+  if(fields && String(fields.rsrq||'').trim()!=='') scores.push(rank[rq[0]]);
+  if(fields && String(fields.snr||'').trim()!=='') scores.push(rank[sr[0]]);
+
+  scores=scores.filter(function(v){return typeof v==='number' && !isNaN(v);});
+  if(!scores.length) return '';
+
+  var worst=Math.min.apply(null,scores);
+  var calls='',video='',data='';
+
+  if(worst>=4){
+    calls='Excellent. Clear, stable calls.';
+    video='Excellent. Smooth HD streaming.';
+    data='Excellent. Fast and responsive.';
+  }else if(worst===3){
+    calls='Good. Calls should be clear and stable.';
+    video='Good. Streaming should be smooth with little buffering.';
+    data='Good. Reliable speeds and responsive browsing.';
+  }else if(worst===2){
+    calls='Medium. Calls should work, but brief audio issues are possible.';
+    video='Medium. Video may lower quality or buffer occasionally.';
+    data='Medium. Usable speeds, but performance may vary.';
+  }else if(worst===1){
+    calls='Weak. Calls may sound choppy or briefly cut out.';
+    video='Weak. Expect buffering and lower video quality.';
+    data='Weak. Slower, inconsistent speeds and more lag.';
+  }else{
+    calls='Very Weak. Calls may break up or drop.';
+    video='Very Weak. Frequent buffering and major quality drops.';
+    data='Very Weak. Data may be very slow or unstable.';
+  }
+
+  return '<div class="notice" style="margin-top:10px;padding:10px 12px">'
+    +'<b>Expected experience</b>'
+    +'<div class="small" style="margin-top:5px;line-height:1.45">'
+    +'<b>📞 Calls:</b> '+esc(calls)+'<br>'
+    +'<b>🎬 Video:</b> '+esc(video)+'<br>'
+    +'<b>🌐 Data:</b> '+esc(data)
+    +'</div></div>';
+}
+
 function identifyFromScan(fields){
  if(!DB)return;
  const plmn=fields.plmn||'';
@@ -1373,7 +3054,13 @@ function identifyFromScan(fields){
  const local=fields.local||'';
  const carrier=DB.plmns[plmn]||'Unknown';
 
- const rec=DB.records.find(r=>r.carrier===carrier&&r.radio===radio&&String(r.eNB||r.gNB)===String(sid));
+ const rec=findExistingScanTower(carrier,radio,sid);
+
+ // v80: existing tower + newly observed band = automatically enrich the saved record.
+ // This never creates a new tower; it only adds a band to an already-matched tower.
+ if(rec && fields.band && fields._fromImageScan===true){
+   autoAddScannedBandToExistingTower(rec,fields);
+ }
 
  let cls='unknown',name='UNMAPPED / UNKNOWN ?';
  if(rec){
@@ -1409,11 +3096,48 @@ function identifyFromScan(fields){
 
  let overall='Unknown',icon='⚪';
  if(vals.length){
-   const rank={'Excellent':4,'Good':3,'Fair':2,'Poor':1,'Very Poor':0};
-   const m=Math.min(...vals.map(x=>rank[x[0]]??0));
-   overall=Object.keys(rank).find(k=>rank[k]===m)||'Unknown';
-   icon=m>=3?'🟢':m===2?'🟡':m===1?'🟠':'🔴';
+   // Combine the available measurements instead of letting one weak metric
+   // automatically force the entire connection to the worst category.
+   const rank={'Weak':0,'Medium':1,'Good':2,'Excellent':3};
+   const avg=vals.reduce((sum,x)=>sum+(rank[x[0]]??0),0)/vals.length;
+   const score=Math.max(0,Math.min(3,Math.round(avg)));
+   overall=['Weak','Medium','Good','Excellent'][score];
+   icon=['🔴','🟠','🟡','🟢'][score];
  }
+
+ // v83: build the three experience descriptions directly inside identifyFromScan.
+ // No helper call, no conditional rendering path to mysteriously vanish.
+ let callsText='',videoText='',dataText='';
+ if(overall==='Excellent'){
+   callsText='Excellent. Calls should sound clear and stay stable.';
+   videoText='Excellent. HD video should stream smoothly.';
+   dataText='Excellent. Expect fast, responsive, consistent data.';
+ }else if(overall==='Good'){
+   callsText='Good. Calls should be clear and generally stable.';
+   videoText='Good. Streaming should be smooth with little buffering.';
+   dataText='Good. Expect reliable speeds and responsive browsing.';
+ }else if(overall==='Medium'){
+   callsText='Medium. Calls should usually work, but weak radio conditions can cause brief audio issues or instability.';
+   videoText='Medium. Video should work, but quality may change or buffer when conditions worsen.';
+   dataText='Medium. Data should be usable, though speeds and latency may vary.';
+ }else if(overall==='Weak'){
+   callsText='Weak. Calls may become choppy, robotic, unstable, or drop.';
+   videoText='Weak. Expect lower quality, buffering, or stalls.';
+   dataText='Weak. Data may be slow, inconsistent, or temporarily unusable.';
+ }else{
+   callsText='Unknown. Not enough signal data to estimate call quality.';
+   videoText='Unknown. Not enough signal data to estimate streaming quality.';
+   dataText='Unknown. Not enough signal data to estimate data performance.';
+ }
+
+ const experienceHtml=`<div class="notice" style="margin-top:10px;padding:10px 12px">
+   <b>Expected experience</b>
+   <div class="small" style="margin-top:5px;line-height:1.5">
+     <div><b>📞 Calls:</b> ${esc(callsText)}</div>
+     <div><b>🎬 Video:</b> ${esc(videoText)}</div>
+     <div><b>🌐 Data:</b> ${esc(dataText)}</div>
+   </div>
+ </div>`;
 
  let tacnote='';
  const unknownAddButton = !rec
@@ -1451,6 +3175,15 @@ function identifyFromScan(fields){
  RSRQ: ${fields.rsrq?`${rq[1]} ${esc(fields.rsrq)} dB · ${rq[0]}`:'Unknown'}<br>
  SNR/SINR: ${fields.snr?`${sr[1]} ${esc(fields.snr)} dB · ${sr[0]}`:'Unknown'}
  </div>
+ ${experienceHtml}
+ <div class="scan-experience" style="margin:10px 0 2px;padding:10px 12px;border:1px solid #334155;border-radius:10px;background:#0f172a">
+ <div style="font-weight:800;margin-bottom:4px">Expected experience</div>
+ <div class="small" style="line-height:1.5">
+  <div><b>📞 Calls:</b> ${overall==='Excellent'?'Clear and stable.':overall==='Good'?'Clear and generally stable.':overall==='Fair'?'Should work; brief audio issues possible.':overall==='Poor'?'May sound choppy or briefly cut out.':overall==='Very Poor'?'May break up, sound robotic, or drop.':'Not enough signal data.'}</div>
+  <div><b>🎬 Video:</b> ${overall==='Excellent'?'HD should stream smoothly.':overall==='Good'?'Should stream smoothly with little buffering.':overall==='Fair'?'May reduce quality or buffer occasionally.':overall==='Poor'?'Expect buffering and lower quality.':overall==='Very Poor'?'Frequent buffering and major quality drops likely.':'Not enough signal data.'}</div>
+  <div><b>🌐 Data:</b> ${overall==='Excellent'?'Fast, responsive, and consistent.':overall==='Good'?'Reliable speeds and responsive browsing.':overall==='Fair'?'Usable, but speeds may vary.':overall==='Poor'?'Slower, inconsistent speeds and more lag.':overall==='Very Poor'?'May be very slow, unstable, or unusable.':'Not enough signal data.'}</div>
+ </div>
+</div>
  <div style="margin-top:10px"><b>Math:</b> ${esc(math)}</div>
  
  ${rec?.notes?'<div class="small" style="margin-top:8px">'+esc(rec.notes)+'</div>':''}
@@ -1690,7 +3423,80 @@ function extractScanFieldsSpatial(ocrData){
 
  return {radio,plmn,cell,sid,local,band,bw,pci,tac,rsrp,rsrq,snr};
 }
+
+// CELL-ID-ONLY LTE RECOVERY
+// Allows sparse screenshots containing only LTE Cell ID + Band.
+// LTE ECI math: eNB = ECI // 256; local cell = ECI % 256.
+// The derived eNB is then matched against the registry to recover carrier/PLMN/site/etc.
+
+function sparseLteMathBanner(fields){
+ if(!fields?._sparseLteMath)return '';
+ const r=fields._sparseLteMatch;
+ return `<div class="notice" style="margin-top:10px">
+ <b>LTE Cell ID math matched the registry.</b><br>
+ ${esc(fields._sparseLteMath)}
+ ${r?`<br><b>${esc(r.site||'Unnamed tower')}</b> · ${esc(r.carrier||'')} · Band ${esc(fields.band||r.bands||'Unknown')}`:''}
+ </div>`;
+}
+
+function enrichSparseLteScan(fields){
+ if(!fields)return fields||{};
+ const f={...fields};
+
+ const rawCell=String(f.cell||f.cell_id||'').replace(/\D/g,'');
+ if(!rawCell)return f;
+
+ // If OCR did not identify a radio, a normal LTE ECI plus a plain LTE band is enough
+ // to attempt LTE identifier math. Do not reinterpret a scan explicitly marked 5G/NR.
+ const explicitRadio=String(f.radio||'').toUpperCase();
+ if(explicitRadio==='5G'||explicitRadio==='NR')return f;
+
+ const eci=Number(rawCell);
+ if(!Number.isSafeInteger(eci)||eci<0)return f;
+
+ const derivedEnb=Math.floor(eci/256);
+ const derivedLocal=eci%256;
+
+ // Find every LTE registry record with this derived eNB.
+ const matches=(DB?.records||[]).filter(r =>
+   String(r.radio||'').toUpperCase()==='LTE' &&
+   String(r.eNB||'')===String(derivedEnb)
+ );
+
+ f.radio='LTE';
+ f.cell=String(eci);
+ f.sid=String(derivedEnb);
+ f.local=String(derivedLocal);
+
+ if(matches.length){
+   // Prefer a record whose saved bands include the scanned band.
+   const scannedBand=String(f.band||'').replace(/^B/i,'').trim();
+   let r=matches[0];
+   if(scannedBand){
+     const byBand=matches.find(x =>
+       String(x.bands||'').split(/[,\s/]+/).some(b=>b.replace(/^B/i,'')===scannedBand)
+     );
+     if(byBand)r=byBand;
+   }
+
+   f.carrier=f.carrier||r.carrier||'';
+   f.plmn=f.plmn||(
+     (typeof registryPlmnForRecord==='function' ? registryPlmnForRecord(r) : '') ||
+     Object.entries(DB?.plmns||{}).find(([p,n])=>n===r.carrier)?.[0] || ''
+   );
+   f.band=f.band||r.bands||'';
+   f.bandwidth=f.bandwidth||r.bandwidth||'';
+   f.pci=f.pci||r.pci||'';
+   f.tac=f.tac||r.tac||'';
+   f._sparseLteMatch=r;
+   f._sparseLteMath=`Cell ID ${eci} ÷ 256 → eNB ${derivedEnb}, local cell ${derivedLocal}`;
+ }
+ return f;
+}
+
 function identifyFromScan(fields){
+ fields=enrichSparseLteScan(fields);
+
  if(!DB)return;
  const plmn=fields.plmn||'', radio=fields.radio||'LTE', raw=fields.cell||'', sid=fields.sid||'';
 
@@ -1699,14 +3505,52 @@ function identifyFromScan(fields){
    if(!plmn)missing.push('PLMN');
    if(!raw)missing.push('Cell ID/NCI');
    if(raw&&!sid)missing.push(radio==='LTE'?'eNB':'gNB');
-   document.getElementById('scanIdentity').innerHTML=
-     `<div class="notice"><b>Scan not identified yet.</b> Missing ${esc(missing.join(', '))}. `+
-     `The app will not substitute TAC, PCI, or another number for Cell ID/NCI.</div>`;
+
+   // Identifier failure must NOT suppress signal analysis. RSRP/RSRQ/SINR are
+   // useful on their own, so still show connection quality and expected experience.
+   const rr=signalRating('rsrp',fields.rsrp),rq=signalRating('rsrq',fields.rsrq),sr=signalRating('snr',fields.snr);
+   const vals=[]; if(fields.rsrp)vals.push(rr); if(fields.rsrq)vals.push(rq); if(fields.snr)vals.push(sr);
+   let overall='Unknown',icon='⚪';
+   if(vals.length){
+     const rank={'Weak':0,'Medium':1,'Good':2,'Excellent':3};
+     const avg=vals.reduce((sum,x)=>sum+(rank[x[0]]??0),0)/vals.length;
+     const score=Math.max(0,Math.min(3,Math.round(avg)));
+     overall=['Weak','Medium','Good','Excellent'][score];
+     icon=['🔴','🟠','🟡','🟢'][score];
+   }
+   const exp={
+     Excellent:['Excellent. Calls should sound clear and stay stable.','Excellent. HD video should stream smoothly.','Excellent. Expect fast, responsive, consistent data.'],
+     Good:['Good. Calls should be clear and generally stable.','Good. Streaming should be smooth with little buffering.','Good. Expect reliable speeds and responsive browsing.'],
+     Medium:['Medium. Calls should usually work, but interference or weaker radio conditions can cause brief audio issues.','Medium. Video should work, but quality may change or buffer when conditions worsen.','Medium. Data should be usable, though speeds and latency may vary.'],
+     Weak:['Weak. Calls may become choppy, robotic, unstable, or drop.','Weak. Expect lower quality, buffering, or stalls.','Weak. Data may be slow, inconsistent, or temporarily unusable.'],
+     Unknown:['Unknown. Not enough signal data to estimate call quality.','Unknown. Not enough signal data to estimate streaming quality.','Unknown. Not enough signal data to estimate data performance.']
+   }[overall];
+
+   document.getElementById('scanIdentity').innerHTML=`<div class="card result unknown">
+    <h2>Signal Quality — Tower ID Incomplete</h2>
+    <div class="small muted" style="margin-bottom:10px">Missing ${esc(missing.join(', '))}. Tower identification is incomplete, but the measured radio quality can still be analyzed.</div>
+    <div style="margin-top:8px"><b>Signal: ${icon} ${overall}</b></div>
+    <div class="scan-metric-breakdown" style="margin-top:10px;display:grid;gap:8px">
+      <div style="padding:9px 11px;border:1px solid #334155;border-radius:10px;background:#0f172a"><b>RSRP — Signal Strength</b><div class="small" style="margin-top:3px">${fields.rsrp?`${rr[1]} <b>${esc(rr[0])}: ${esc(fields.rsrp)} dBm</b><br>Measures how strongly the tower’s signal reaches your phone.<br><b>Effect:</b> ${esc(scanMetricExperience('rsrp',rr[0]))}`:'⚪ <b>Unknown</b><br>Signal strength could not be measured from this scan.'}</div></div>
+      <div style="padding:9px 11px;border:1px solid #334155;border-radius:10px;background:#0f172a"><b>RSRQ — Signal Quality / Congestion</b><div class="small" style="margin-top:3px">${fields.rsrq?`${rq[1]} <b>${esc(rq[0])}: ${esc(fields.rsrq)} dB</b><br>Measures signal quality, interference, and network loading.<br><b>Effect:</b> ${esc(scanMetricExperience('rsrq',rq[0]))}`:'⚪ <b>Unknown</b><br>Interference or congestion impact cannot be determined.'}</div></div>
+      <div style="padding:9px 11px;border:1px solid #334155;border-radius:10px;background:#0f172a"><b>SNR/SINR — Signal Clarity</b><div class="small" style="margin-top:3px">${fields.snr?`${sr[1]} <b>${esc(sr[0])}: ${esc(fields.snr)} dB</b><br>Measures how much stronger the useful signal is than interference and noise.<br><b>Effect:</b> ${esc(scanMetricExperience('sinr',sr[0]))}`:'⚪ <b>Unknown</b><br>Signal clarity could not be measured from this scan.'}</div></div>
+    </div>
+    <div class="notice scan-experience" style="margin-top:10px;padding:10px 12px"><b>Overall Expected Experience</b><div class="small" style="margin-top:5px;line-height:1.5"><div><b>📞 Calls:</b> ${esc(exp[0])}</div><div><b>🎬 Video:</b> ${esc(exp[1])}</div><div><b>🌐 Data:</b> ${esc(exp[2])}</div></div></div>
+    <div class="notice" style="margin-top:10px"><b>Tower not identified yet.</b> The app will not substitute TAC, PCI, or another number for Cell ID/NCI.</div>
+   </div>`;
    return;
  }
 
  const carrier=DB.plmns[plmn]||'Unknown';
- const rec=DB.records.find(r=>r.carrier===carrier&&r.radio===radio&&String(r.eNB||r.gNB)===String(sid));
+ const rec=(typeof findExistingScanTower==='function')
+   ? findExistingScanTower(carrier,radio,sid)
+   : DB.records.find(r=>r.carrier===carrier&&r.radio===radio&&String(r.eNB||r.gNB)===String(sid));
+
+ // Automatic band enrichment is allowed ONLY for a real uploaded/pasted image OCR scan.
+ // Manual edits to the scan fields do not change the saved Registry band list.
+ if(rec && fields.band && fields._fromImageScan===true && typeof autoAddScannedBandToExistingTower==='function'){
+   autoAddScannedBandToExistingTower(rec,fields);
+ }
 
  let cls='unknown',name='UNMAPPED / UNKNOWN ?';
  if(rec){name=rec.site;cls=rec.status==='confirmed'?'ok':rec.status==='provisional'?'prov':'unknown';}
@@ -1716,10 +3560,36 @@ function identifyFromScan(fields){
  const vals=[]; if(fields.rsrp)vals.push(rr); if(fields.rsrq)vals.push(rq); if(fields.snr)vals.push(sr);
  let overall='Unknown',icon='⚪';
  if(vals.length){
-   const rank={'Excellent':4,'Good':3,'Fair':2,'Poor':1,'Very Poor':0};
-   const m=Math.min(...vals.map(x=>rank[x[0]]??0));
-   overall=Object.keys(rank).find(k=>rank[k]===m)||'Unknown';
-   icon=m>=3?'🟢':m===2?'🟡':m===1?'🟠':'🔴';
+   // Combine the available measurements instead of letting one weak metric
+   // automatically force the entire connection to the worst category.
+   const rank={'Weak':0,'Medium':1,'Good':2,'Excellent':3};
+   const avg=vals.reduce((sum,x)=>sum+(rank[x[0]]??0),0)/vals.length;
+   const score=Math.max(0,Math.min(3,Math.round(avg)));
+   overall=['Weak','Medium','Good','Excellent'][score];
+   icon=['🔴','🟠','🟡','🟢'][score];
+ }
+
+ let callsText='',videoText='',dataText='';
+ if(overall==='Excellent'){
+   callsText='Excellent. Calls should sound clear and stay stable.';
+   videoText='Excellent. HD video should stream smoothly.';
+   dataText='Excellent. Expect fast, responsive, consistent data.';
+ }else if(overall==='Good'){
+   callsText='Good. Calls should be clear and generally stable.';
+   videoText='Good. Streaming should be smooth with little buffering.';
+   dataText='Good. Expect reliable speeds and responsive browsing.';
+ }else if(overall==='Medium'){
+   callsText='Medium. Calls should usually work, but weak radio conditions can cause brief audio issues or instability.';
+   videoText='Medium. Video should work, but quality may change or buffer when conditions worsen.';
+   dataText='Medium. Data should be usable, though speeds and latency may vary.';
+ }else if(overall==='Weak'){
+   callsText='Weak. Calls may become choppy, robotic, unstable, or drop.';
+   videoText='Weak. Expect lower quality, buffering, or stalls.';
+   dataText='Weak. Data may be slow, inconsistent, or temporarily unusable.';
+ }else{
+   callsText='Unknown. Not enough signal data to estimate call quality.';
+   videoText='Unknown. Not enough signal data to estimate streaming quality.';
+   dataText='Unknown. Not enough signal data to estimate data performance.';
  }
 
  let math='';
@@ -1757,23 +3627,73 @@ function identifyFromScan(fields){
  <div class="label">TAC</div><div>${esc(fields.tac||'Unknown')} ${tacnote?'<span class="small muted">('+esc(tacnote)+')</span>':''}</div>
  </div>
  <div style="margin-top:12px"><b>Signal: ${icon} ${overall}</b></div>
- <div class="small">RSRP: ${fields.rsrp?`${rr[1]} ${esc(fields.rsrp)} dBm · ${rr[0]}`:'Unknown'}<br>
- RSRQ: ${fields.rsrq?`${rq[1]} ${esc(fields.rsrq)} dB · ${rq[0]}`:'Unknown'}<br>
- SNR/SINR: ${fields.snr?`${sr[1]} ${esc(fields.snr)} dB · ${sr[0]}`:'Unknown'}</div>
+ <div class="scan-metric-breakdown" style="margin-top:10px;display:grid;gap:8px">
+  <div style="padding:9px 11px;border:1px solid #334155;border-radius:10px;background:#0f172a">
+   <b>RSRP — Signal Strength</b>
+   <div class="small" style="margin-top:3px">${fields.rsrp?`${rr[1]} <b>${esc(rr[0])}: ${esc(fields.rsrp)} dBm</b><br>Measures how strongly the tower’s signal reaches your phone.<br><b>Effect:</b> ${esc(scanMetricExperience('rsrp',rr[0]))}`:'⚪ <b>Unknown</b><br>Signal strength could not be measured from this scan.'}</div>
+  </div>
+  <div style="padding:9px 11px;border:1px solid #334155;border-radius:10px;background:#0f172a">
+   <b>RSRQ — Signal Quality / Congestion</b>
+   <div class="small" style="margin-top:3px">${fields.rsrq?`${rq[1]} <b>${esc(rq[0])}: ${esc(fields.rsrq)} dB</b><br>Measures how clean the LTE signal is relative to interference and network loading.<br><b>Effect:</b> ${esc(scanMetricExperience('rsrq',rq[0]))}`:'⚪ <b>Unknown</b><br>Measures signal quality, interference, and network loading.<br><b>Effect:</b> Unknown here, so interference or congestion impact cannot be determined.'}</div>
+  </div>
+  <div style="padding:9px 11px;border:1px solid #334155;border-radius:10px;background:#0f172a">
+   <b>SNR/SINR — Signal Clarity</b>
+   <div class="small" style="margin-top:3px">${fields.snr?`${sr[1]} <b>${esc(sr[0])}: ${esc(fields.snr)} dB</b><br>Measures how much stronger the useful signal is than interference and noise.<br><b>Effect:</b> ${esc(scanMetricExperience('sinr',sr[0]))}`:'⚪ <b>Unknown</b><br>Signal clarity relative to interference and noise could not be measured from this scan.'}</div>
+  </div>
+ </div>
+ <div class="notice scan-experience" style="margin-top:10px;padding:10px 12px">
+   <b>Overall Expected Experience</b>
+   <div class="small" style="margin-top:5px;line-height:1.5">
+     <div><b>📞 Calls:</b> ${esc(callsText)}</div>
+     <div><b>🎬 Video:</b> ${esc(videoText)}</div>
+     <div><b>🌐 Data:</b> ${esc(dataText)}</div>
+   </div>
+ </div>
  <div style="margin-top:10px"><b>Math:</b> ${esc(math)}</div>
  
  </div>`;
 
 
- // AUTO_UNKNOWN_ROUTE_v40
- // Valid PLMN + derived eNB/gNB but no registry match => immediately open Add Unknown Scanned Tower.
+ // v75 SIMPLE MISSING-TOWER FLOW
+ // If the scan identifies a tower that is not in the Registry, do nothing automatically.
+ // Ask once. Yes opens Add/Edit with the scanned data; No leaves everything alone.
  if(!rec && fields && fields.plmn && fields.sid){
-   setTimeout(()=>prepareUnknownTowerFromScan(fields),180);
+   setTimeout(()=>{
+     const addIt=window.confirm('This tower is not in your Registry.\n\nAdd it?');
+     if(addIt){
+       openAddFromScan(fields);
+     }
+   },120);
  }
 }
 
 
 
+
+function openAddFromScan(fields){
+ if(!fields)return;
+ showTab('add',document.querySelectorAll('.tab')[4]);
+ clearForm();
+ const plmn=String(fields.plmn||'').replace(/\D/g,'');
+ const carrier=carrierNameFromPlmn(plmn);
+ const radio=String(fields.radio||'LTE').toUpperCase();
+ const set=(id,val)=>{const el=document.getElementById(id);if(el&&val!==undefined&&val!==null)el.value=val;};
+ set('fCarrier',carrier==='custom'?'':carrier);
+ set('fPlmn',plmn);
+ const pe=document.getElementById('fPlmn'); if(pe)pe.dataset.auto='0';
+ set('fRadio',(radio==='5G'||radio==='NR')?'5G':'LTE');
+ if(typeof updateIdLabel==='function')updateIdLabel();
+ set('fId',fields.sid||'');
+ set('fCellId',fields.cellId||fields.nci||'');
+ set('fBand',fields.band||'');
+ set('fBandwidth',fields.bandwidth||'');
+ set('fPci',fields.pci||'');
+ set('fTac',fields.tac||'');
+ set('fRsrp',fields.rsrp||'');
+ set('fRsrq',fields.rsrq||'');
+ set('fSnr',fields.snr||fields.sinr||'');
+ toast('Tower not added yet. Review it, then tap Save Tower if you want it.');
+}
 
 function cancelScannedTowerPlacement(){
  pendingScannedTowerForMap=null;
@@ -1862,6 +3782,23 @@ function finishScannedTowerMapPlacement(lat,lon){
 
 
 
+
+function clearUnknownScanCandidate(){
+  window._currentUnknownScanFields=null;
+  window._unknownScanFormSignature=null;
+
+  const banner=document.getElementById('unknownScanBanner');
+  const actions=document.getElementById('unknownScanActions');
+  const identity=document.getElementById('scanIdentity');
+
+  if(banner){banner.classList.add('hidden');banner.innerHTML='';}
+  if(actions){actions.classList.add('hidden');actions.innerHTML='';}
+  if(identity)identity.innerHTML='';
+
+  clearForm();
+  showTab('scan',document.querySelectorAll('.tab')[1]);
+}
+
 function saveUnknownScannedTower(){
  const site=(document.getElementById('fSite')?.value||'').trim();
  const id=(document.getElementById('fId')?.value||'').trim();
@@ -1898,6 +3835,7 @@ function saveUnknownScannedTower(){
    const identity=document.getElementById('scanIdentity'); if(identity)identity.innerHTML='';
    document.getElementById('scanResults')?.classList.add('hidden');
    renderRegistry();
+   clearForm();
    toast('New tower saved to registry.');
    showTab('registry',document.querySelectorAll('.tab')[2]);
  }
@@ -2040,6 +3978,7 @@ function refreshFromScanInputs(){
  }
  document.getElementById('sId').value=x.sid;
  document.getElementById('sLocal').value=x.local;
+ x._fromImageScan=false;
  identifyFromScan(x);
 }
 ['sPlmn','sRadio','sCell','sBand','sBw','sPci','sTac','sRsrp','sRsrq','sSnr'].forEach(id=>{
@@ -2134,6 +4073,7 @@ runOcrBtn.addEventListener('click',async()=>{
    fields=mergeScanFields(fields,extractScanFieldsSpatial(d2));
    fields=mergeScanFields(fields,extractDiagnosticTextLines(d2.text||''));
 
+   fields._fromImageScan=true;
    fillScanResults(fields,(d1.text||'')+'\n--- ORIGINAL PASS ---\n'+(d2.text||''));
 
    if(fields.plmn&&fields.cell){
@@ -2150,5 +4090,67 @@ runOcrBtn.addEventListener('click',async()=>{
 
 
 </script>
+
+<script>
+(function(){
+  const BUILD='v83-HARD-FIX-EXPERIENCE-2201';
+  const KEY='towerRegistryFrontendBuildSeen';
+
+  async function refreshAppCaches(){
+    try{
+      if('caches' in window){
+        const names=await caches.keys();
+        await Promise.all(names.map(n=>{
+          if(!n.includes(BUILD)) return caches.delete(n);
+        }));
+      }
+
+      // Ask an old service worker to step aside. This does NOT clear localStorage,
+      // so saved registry data/PIN trust/backend URL remain untouched.
+      if('serviceWorker' in navigator){
+        const regs=await navigator.serviceWorker.getRegistrations();
+        for(const reg of regs){
+          try{ await reg.update(); }catch(e){}
+        }
+      }
+
+      const seen=sessionStorage.getItem(KEY);
+      if(seen!==BUILD){
+        sessionStorage.setItem(KEY,BUILD);
+        // One cache-busted reload so GitHub Pages/Safari requests fresh HTML/assets.
+        const u=new URL(location.href);
+        u.searchParams.set('build',BUILD);
+        if(location.search!==u.search){
+          location.replace(u.toString());
+        }
+      }
+    }catch(e){}
+  }
+
+  refreshAppCaches();
+})();
+</script>
+
+
+<script id="v64PendingSaveState">
+document.addEventListener('DOMContentLoaded',()=>{
+  const count=document.getElementById('pendingChangesCount');
+  const bar=document.getElementById('pendingChangesBar');
+  if(!count||!bar)return;
+
+  const refresh=()=>{
+    const n=parseInt(count.textContent||'0',10)||0;
+    if(n<=0)bar.classList.add('hidden');
+  };
+
+  const obs=new MutationObserver(refresh);
+  obs.observe(count,{childList:true,characterData:true,subtree:true});
+  refresh();
+});
+</script>
+
+
+
+
 </body>
 </html>
